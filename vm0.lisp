@@ -25,7 +25,7 @@
     (:eq (vm0-push (if (= (vm0-pop) (vm0-pop)) 1 0)) '(:continue))
     (:lt (let ((b (vm0-pop)) (a (vm0-pop))) (vm0-push (if (< a b) 1 0))) '(:continue))
     (:gt (let ((b (vm0-pop)) (a (vm0-pop))) (vm0-push (if (> a b) 1 0))) '(:continue))
-    (:jmp (cons :jump (cadr instruction)))
+    (:jmp `(:jump ,(cadr instruction)))
     (:jz (if (zerop (vm0-pop)) (cons :jump (cadr instruction)) '(:continue)))
     (:jnz (if (not (zerop (vm0-pop))) (cons :jump (cadr instruction)) '(:continue)))
     (:print (format t "~A~%" (vm0-pop)) '(:continue))
@@ -38,7 +38,7 @@
       (let ((control-directive (execute (elt program pc))))
         (case (car control-directive)
           (:continue (incf pc))
-          (:jump (setf pc (cdr control-directive)))
+          (:jump (setf pc (cadr control-directive)))
           (:done (return))
           (otherwise (error "unknown control directive: ~S" (car control-directive))))))))
 
