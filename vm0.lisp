@@ -71,7 +71,7 @@
   (:print (with-1 a (format t "~A~%" a)))
   (:halt (done)))
 
-(defun run (program &optional (stack (make-array 1024 :initial-element 0)))
+(defun run (program &key (stack (make-array 1024 :initial-element 0)) trace)
   (let ((pc 0) (sp 0))
     (loop while (< pc (length program)) do
       (multiple-value-bind (control-directive new-sp) (execute (aref program pc) stack sp)
@@ -83,7 +83,8 @@
            (return))
           (:done (return))
           (otherwise (error "unknown control directive: ~S" (car control-directive))))
-        (setf sp new-sp)))))
+        (setf sp new-sp)
+        (when trace (format t "~S~%" (subseq stack 0 sp)))))))
 
 (defun assemble (program)
   (let ((program (if (vectorp program) program (coerce program 'vector)))
@@ -148,10 +149,11 @@
  (assemble
      (syntax
       '(
-        (:push 1)
+        (:push 10)
+        (:push 20)
+        (:push 30)
         (:push 2)
-        (:push 3)
+        (:pick)
         (:print)
-        (:print)
-        (:print)
-        ))))
+        )))
+ :trace nil)
