@@ -215,3 +215,32 @@
          (:pop)                         ; discard n
          (:print)                       ; print b
          (:halt))))))
+
+;;; sum [0 .. n]
+(run
+ (assemble
+     (macro
+      (syntax
+       '((:push 0)                      ; sum = 0
+         (:push 5)                      ; n = 5
+
+         (:label :loop)
+         (:dup)                         ; copy n
+         (:push 0)
+         (:eq)
+         (:jnz :done)
+
+         (:over)                        ; copy sum
+         (:over)                        ; copy n
+         (:add)                         ; sum + n
+         (:rot)                         ; n result sum
+         (:pop)                         ; drop old sum
+         (:swap)                        ; result n
+         (:dec)                         ; n = n - 1
+
+         (:jmp :loop)
+
+         (:label :done)
+         (:pop)                         ; remove counter
+         (:print)                       ; print sum
+         (:halt))))))
