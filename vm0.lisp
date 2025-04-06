@@ -178,28 +178,39 @@
          (:print)
          (:halt))))))
 
+;;; fibonacci
 (run
  (assemble
      (macro
       (syntax
-       '(
-         (:push 10)
-         (:dup)
-         (:add)
-         (:print)     ; 20
-         (:push 1)
-         (:push 2)
-         (:over)
-         (:add)
-         (:add)
-         (:print)     ; 4
-         (:push 100)
-         (:push 1)
-         (:swap)
-         (:print)     ; 100
-         (:inc)
-         (:print)     ; 2
-         (:push 10)
-         (:dec)
-         (:print)     ; 9
-         )))))
+       '((:push 0)                      ; a fib(n - 2)
+         (:push 1)                      ; b fib(n - 1)
+         (:push 10)                     ; n
+
+         (:label :loop)
+         (:dup)                         ; n
+         (:push 0)
+         (:eq)
+         (:jnz :done)
+
+         ;; next = a + b
+         (:push 2) (:pick)              ; a
+         (:push 2) (:pick)              ; b
+         (:add)                         ; next
+
+         ;; update a and b
+         (:push 3) (:roll)              ; b → a
+         (:push 2) (:roll)              ; next → b
+
+         (:dec)                         ; n = n - 1
+
+         ;; clean up old a
+         (:swap)                        ; bring a to TOS
+         (:pop)                         ; discard it
+
+         (:jmp :loop)
+
+         (:label :done)
+         (:pop)                         ; discard n
+         (:print)                       ; print b
+         (:halt))))))
