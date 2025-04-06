@@ -61,7 +61,6 @@
   (:roll (with-1 depth (let ((new-tos (safe-read depth)))
                          (shift-down depth)
                          (safe-write 0 new-tos))))
-  (:rot (with-3 a b c (safe-push c)  (safe-push a) (safe-push b)))
   (:add (with-2 a b (safe-push (+ a b))))
   (:sub (with-2 a b (safe-push (- a b))))
   (:mul (with-2 a b (safe-push (* a b))))
@@ -138,6 +137,7 @@
     (:dup '((:push 0) (:pick)))
     (:over '((:push 1) (:pick)))
   (:swap '((:push 1) (:roll)))
+  (:rot '((:push 2) (:roll)))
   (:inc '((:push 1) (:add)))
   (:dec '((:push 1) (:sub))))
 
