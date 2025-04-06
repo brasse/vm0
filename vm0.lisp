@@ -61,14 +61,9 @@
   (:roll (with-1 depth (let ((new-tos (safe-read depth)))
                          (shift-down depth)
                          (safe-write 0 new-tos))))
-  (:dup (with-1 a (safe-push a) (safe-push a)))
-  (:over (with-2 a b (safe-push b) (safe-push a) (safe-push b)))
-  (:swap (with-2 a b (safe-push b) (safe-push a)))
   (:rot (with-3 a b c (safe-push c)  (safe-push a) (safe-push b)))
   (:add (with-2 a b (safe-push (+ a b))))
   (:sub (with-2 a b (safe-push (- a b))))
-  (:inc (with-1 a (safe-push (1+ a))))
-  (:dec (with-1 a (safe-push (1- a))))
   (:mul (with-2 a b (safe-push (* a b))))
   (:div (with-2 a b (if (zerop b)
                         (trap :divide-by-zero)
@@ -123,6 +118,29 @@
              collect x)
      'vector)))
 
+(defmacro defvm-macros (&rest macros)
+  `(defun macro (program)
+     (labels ((flatten (l)
+                (cond ((null l) '())
+                      ((every #'atom (car l)) (cons (car l) (flatten (cdr l))))
+                      (t (concatenate 'list (flatten (car l)) (flatten (cdr l)))))))
+       (let ((program (if (vectorp program) program (coerce program 'vector))))
+         (coerce
+          (flatten (loop for instruction across program
+                         for x = (case (car instruction)
+                                   ,@(loop for (name . body) in macros
+                                           collect `(,name ,@body))
+                                   (t instruction))
+                         collect x))
+          'vector)))))
+
+(defvm-macros
+    (:dup '((:push 0) (:pick)))
+    (:over '((:push 1) (:pick)))
+  (:swap '((:push 1) (:roll)))
+  (:inc '((:push 1) (:add)))
+  (:dec '((:push 1) (:sub))))
+
 (defun syntax (program)
   (let ((program (if (vectorp program) program (coerce program 'vector))))
     (loop for instruction across program
@@ -137,37 +155,51 @@
 ;;; factorial
 (run
  (assemble
-     (syntax
-      '((:push 1)                      ; product
-        (:push 5)                      ; counter, factorial to compute
+     (macro
+      (syntax
+       '((:push 1)                     ; product
+         (:push 5)                     ; counter, factorial to compute
 
-        (:label :loop)
-        (:dup)                          ; copy counter for check
-        (:push 1)
-        (:eq)
-        (:jnz :done)
+         (:label :loop)
+         (:dup)                         ; copy counter for check
+         (:push 1)
+         (:eq)
+         (:jnz :done)
 
-        (:dup)                          ; copy counter
-        (:rot)                          ; now: counter product counter
-        (:mul)                          ; counter * product
-        (:swap)                         ; product result under counter
-        (:dec)                          ; dec counter
-        (:jmp :loop)
+         (:dup)                         ; copy counter
+         (:rot)                         ; now: counter product counter
+         (:mul)                         ; counter * product
+         (:swap)                        ; product result under counter
+         (:dec)                         ; dec counter
+         (:jmp :loop)
 
-        (:label :done)
-        (:pop)                          ; discard counter
-        (:print)
-        (:halt)))))
+         (:label :done)
+         (:pop)                         ; discard counter
+         (:print)
+         (:halt))))))
 
 (run
  (assemble
-     (syntax
-      '(
-        (:push 10)
-        (:push 20)
-        (:push 30)
-        (:push 2)
-        (:roll)
-        (:print)
-        )))
- :trace t)
+     (macro
+      (syntax
+       '(
+         (:push 10)
+         (:dup)
+         (:add)
+         (:print)     ; 20
+         (:push 1)
+         (:push 2)
+         (:over)
+         (:add)
+         (:add)
+         (:print)     ; 4
+         (:push 100)
+         (:push 1)
+         (:swap)
+         (:print)     ; 100
+         (:inc)
+         (:print)     ; 2
+         (:push 10)
+         (:dec)
+         (:print)     ; 9
+         )))))
