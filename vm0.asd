@@ -10,3 +10,7 @@
                (:file "assembler")
                (:file "vm")
                (:file "programs")))
+
+(asdf:defsystem "vm0/tests"
+  :depends-on ("vm0" "fiveam")
+  :components ((:file "tests")))
