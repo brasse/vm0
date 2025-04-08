@@ -9,8 +9,8 @@
                (:file "instructions")
                (:file "assembler")
                (:file "vm")
-               (:file "programs")))
+               (:file "programs/programs")))
 
 (asdf:defsystem "vm0/tests"
   :depends-on ("vm0" "fiveam")
-  :components ((:file "tests")))
+  :components ((:file "tests/tests")))

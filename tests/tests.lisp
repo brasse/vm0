@@ -13,10 +13,10 @@
 (in-suite programs)
 
 (test factorial-works
-  (is (string= "120" (capture-output #'vm0/programs:factorial))))
+  (is (string= "120" (capture-output #'factorial))))
 (test fibonacci-works
-  (is (string= "89" (capture-output #'vm0/programs:fibonacci))))
+  (is (string= "89" (capture-output #'fibonacci))))
 (test sum-0-n-works
-  (is (string= "15" (capture-output #'vm0/programs:sum-0-n))))
+  (is (string= "15" (capture-output #'sum-0-n))))
 (test max-a-b-works
-  (is (string= "42" (capture-output #'vm0/programs:max-a-b))))
+  (is (string= "42" (capture-output #'max-a-b))))
