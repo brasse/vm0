@@ -23,6 +23,8 @@
   (:jmp (jump (cadr instruction)))
   (:jz (with-1 a (when (zerop a) (jump (cadr instruction)))))
   (:jnz (with-1 a (unless (zerop a) (jump (cadr instruction)))))
+  (:call (progn (safe-push pc) (jump (cadr instruction))))
+  (:ret (with-1 a (jump a)))
   (:print (with-1 a (format t "~A~%" a)))
   (:halt (done)))
 

@@ -4,7 +4,9 @@
   (let ((pc 0) (sp 0))
     (loop while (< pc (length program)) do
       (let ((instruction (aref program pc)))
-        (multiple-value-bind (control-directive new-sp) (execute instruction stack sp)
+        (multiple-value-bind (control-directive new-sp)
+            (let ((return-address (1+ pc)))
+              (execute instruction stack sp return-address))
           (case (car control-directive)
             (:continue (incf pc))
             (:jump (setf pc (cadr control-directive)))

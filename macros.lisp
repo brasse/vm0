@@ -1,7 +1,7 @@
 (in-package :vm0)
 
 (defmacro defvm-instructions (&rest instructions)
-  `(defun execute (instruction stack sp)
+  `(defun execute (instruction stack sp pc)
      (let ((control '(:continue)))
        (macrolet
            ((%validate-depth (depth &body body)
