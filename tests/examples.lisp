@@ -5,9 +5,9 @@
                (with-output-to-string (*standard-output*)
                  (funcall thunk))))
 
-(def-suite programs)
+(def-suite examples)
 
-(in-suite programs)
+(in-suite examples)
 
 (test factorial-works
   (is (string=
