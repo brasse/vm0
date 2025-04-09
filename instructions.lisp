@@ -1,8 +1,8 @@
 (in-package :vm0)
 
 (defvm-instructions
-    (:pop (safe-pop))
-    (:push (safe-push (cadr instruction)))
+  (:pop (safe-pop))
+  (:push (safe-push (cadr instruction)))
   (:pick (with-1 depth (safe-push (safe-read depth))))
   (:roll (with-1 depth (let ((new-tos (safe-read depth)))
                          (shift-down depth)
@@ -26,8 +26,8 @@
   (:halt (done)))
 
 (defvm-macros
-    (:dup '((:push 0) (:pick)))
-    (:over '((:push 1) (:pick)))
+  (:dup '((:push 0) (:pick)))
+  (:over '((:push 1) (:pick)))
   (:swap '((:push 1) (:roll)))
   (:rot '((:push 2) (:roll)))
   (:inc '((:push 1) (:add)))
