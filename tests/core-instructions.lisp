@@ -77,13 +77,19 @@
 (stack-test jnz-works-when-not-jump
   #(10 42)
   #((:push 0) (:jnz 3) (:push 10) (:push 42)))
+(stack-test call-works
+  #(1 20)
+  #((:call 2) (:push 10) (:push 20)))
+(stack-test ret-works
+  #(20 10)
+  #((:call 3) (:push 10) (:halt) (:push 20) (:push 1) (:roll) (:ret)))
 (stack-test halt-works
   #(10)
   #((:push 10) (:halt) (:push 20)))
+
 (stack-test print-pops
   #()
   #((:push 10) (:print)))
-
 (test print-outputs
   (is (string=
        "42"
