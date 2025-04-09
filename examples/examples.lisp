@@ -118,10 +118,7 @@
     (:halt)
 
     (:label :func)
-    (:push 2)
-    (:roll)
-    (:push 2)
-    (:roll)                   ; move return address below args
+    (:fn-args-2)               ; move return address below args
     (:add)
     (:print)
     (:ret)))
@@ -142,10 +139,6 @@
     (:halt)
 
     (:label :func)
-    (:push 2)
-    (:roll)
-    (:push 2)
-    (:roll)                   ; move return address below args
+    (:fn-args-2)               ; move return address below args
     (:add)
-    (:swap)                   ; move return value below return address
-    (:ret)))
+    (:retv)))                  ; get return address and return
