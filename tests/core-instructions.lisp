@@ -26,6 +26,9 @@
 (stack-test pick-works
   #(1 2 3 1)
   #((:push 1) (:push 2) (:push 3) (:push 2) (:pick)))
+(stack-test set-works
+  #(42 2 3)
+  #((:push 1) (:push 2) (:push 3) (:push 42) (:push 2) (:set)))
 (stack-test roll-works
   #(2 3 1)
   #((:push 1) (:push 2) (:push 3) (:push 2) (:roll)))
