@@ -13,4 +13,6 @@
 
 (asdf:defsystem "vm0/tests"
   :depends-on ("vm0" "fiveam")
-  :components ((:file "tests/tests")))
+  :components ((:file "tests/package")
+               (:file "tests/programs")
+               (:file "tests/core-instructions")))

@@ -1,6 +1,6 @@
 (in-package :vm0)
 
-(defun run (program &key (stack (make-array 1024 :initial-element 0)) trace)
+(defun run-program (program &key (stack (make-array 1024 :initial-element 0)) trace)
   (let ((pc 0) (sp 0))
     (loop while (< pc (length program)) do
       (let ((instruction (aref program pc)))
@@ -17,5 +17,5 @@
           (when trace (format t "~S ~S~%" instruction (subseq stack 0 sp))))))))
 
 (defun assemble-and-run (&key program trace)
-  (run (assemble (macro (syntax program)))
-       :trace trace))
+  (run-program (assemble (macro (syntax program)))
+               :trace trace))

@@ -4,4 +4,4 @@
            :assemble
            :syntax
            :macro
-           :run))
+           :run-program))
