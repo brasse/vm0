@@ -1,8 +1,8 @@
-(defpackage :vm0/programs
+(defpackage :vm0/examples
   (:use :cl)
   (:export :+factorial+ :+fibonacci+ :+sum-0-n+ :+max-a-b+))
 
-(in-package :vm0/programs)
+(in-package :vm0/examples)
 
 (defparameter +factorial+
   '((:push 1)                           ; product
