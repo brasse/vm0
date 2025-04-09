@@ -4,6 +4,7 @@
   (:pop (safe-pop))
   (:push (safe-push (cadr instruction)))
   (:pick (with-1 depth (safe-push (safe-read depth))))
+  (:set (with-2 a depth (safe-write depth a)))
   (:roll (with-1 depth (let ((new-tos (safe-read depth)))
                          (shift-down depth)
                          (safe-write 0 new-tos))))
