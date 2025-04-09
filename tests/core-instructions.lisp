@@ -1,17 +1,12 @@
 (in-package :vm0/tests)
 
-(defun capture-output (thunk)
-  (string-trim '(#\NewLine)
-               (with-output-to-string (*standard-output*)
-                 (funcall thunk))))
-
 (defmacro stack-test (name expected program)
   `(test ,name
      (let ((stack (make-array 10 :initial-element :empty)))
        (run-program ,program :stack stack)
        (let ((stack-prefix (subseq stack 0 (length ,expected))))
          (is (equalp ,expected stack-prefix)
-           "expected ~S, but got ~S" ,expected stack-prefix)))))
+             "expected ~S, but got ~S" ,expected stack-prefix)))))
 
 (def-suite core-instructions)
 
@@ -91,6 +86,6 @@
   #()
   #((:push 10) (:print)))
 (test print-outputs
-  (is (string=
-       "42"
+  (is (equalp
+       '("42")
        (capture-output (lambda () (run-program #((:push 42) (:print))))))))

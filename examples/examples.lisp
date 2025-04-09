@@ -1,6 +1,11 @@
 (defpackage :vm0/examples
   (:use :cl)
-  (:export :+factorial+ :+fibonacci+ :+sum-0-n+ :+max-a-b+))
+  (:export :+factorial+
+           :+fibonacci+
+           :+sum-0-n+
+           :+max-a-b+
+           :+function-return-void+
+           :+function-return-int+))
 
 (in-package :vm0/examples)
 
@@ -101,3 +106,46 @@
     (:label :done)
     (:print)
     (:halt)))
+
+(defparameter +function-return-void+
+  '((:push 10)
+    (:push 42)
+    (:call :func)
+
+    (:push 5)
+    (:push 6)
+    (:call :func)
+    (:halt)
+
+    (:label :func)
+    (:push 2)
+    (:roll)
+    (:push 2)
+    (:roll)                   ; move return address below args
+    (:add)
+    (:print)
+    (:ret)))
+
+(defparameter +function-return-int+
+  '((:push 2)
+    (:push 3)
+    (:call :func)
+
+    (:push 60)
+    (:push 40)
+    (:call :func)
+
+    (:call :func)              ; TOS = (2 + 5) + (60 + 40) = 105
+
+    (:print)
+
+    (:halt)
+
+    (:label :func)
+    (:push 2)
+    (:roll)
+    (:push 2)
+    (:roll)                   ; move return address below args
+    (:add)
+    (:swap)                   ; move return value below return address
+    (:ret)))
