@@ -14,10 +14,11 @@
      (loop for instruction across program
            for x = (case (car instruction)
                      (:label nil)
-                     ((:jmp :jz :jnz) (let ((target (gethash (cadr instruction) the-labels)))
-                                        (unless target
-                                          (error "undefined label: ~S" (cadr instruction)))
-                                        (list (car instruction) target)))
+                     ((:jmp :jz :jnz :call)
+                      (let ((target (gethash (cadr instruction) the-labels)))
+                        (unless target
+                          (error "undefined label: ~S" (cadr instruction)))
+                        (list (car instruction) target)))
                      (otherwise instruction))
            when x
              collect x)
@@ -29,7 +30,7 @@
           do (unless
                  (case (car instruction)
                    (:push (typep (cadr instruction) 'integer))
-                   ((:jmp :jz :jnz :label) (typep (cadr instruction) 'keyword))
+                   ((:jmp :jz :jnz :call :label) (typep (cadr instruction) 'keyword))
                    (otherwise (typep (car instruction) 'keyword)))
                (error "syntax error: ~S" instruction)))
     program))
