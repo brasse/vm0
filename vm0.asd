@@ -5,7 +5,7 @@
   :depends-on ()
   :serial t
   :components ((:file "package")
-               (:file "macros")
+               (:file "defvm-macros")
                (:file "instructions")
                (:file "assembler")
                (:file "vm")
