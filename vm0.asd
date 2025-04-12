@@ -8,6 +8,7 @@
                (:file "defvm-macros")
                (:file "instructions")
                (:file "assembler")
+               (:file "compiler")
                (:file "vm")
                (:file "examples/examples")))
 
@@ -18,4 +19,5 @@
                (:file "tests/util")
                (:file "tests/examples")
                (:file "tests/core-instructions")
+               (:file "tests/stack-frames")
                (:file "tests/macros")))
