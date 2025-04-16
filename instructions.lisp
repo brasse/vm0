@@ -1,13 +1,15 @@
 (in-package :vm0)
 
 (defvm-instructions
-    (:pop (safe-pop))
-    (:push (safe-push (cadr instruction)))
-  (:pick (pop-1 depth (safe-push (safe-read depth))))
-  (:set (pop-2 a depth (safe-write depth a)))
-  (:roll (pop-1 depth (let ((new-tos (safe-read depth)))
+  (:pop (safe-pop))
+  (:push (safe-push (cadr instruction)))
+  (:pick (pop-1 index (safe-push (safe-read index))))
+  (:set (pop-2 a index (safe-write index a)))
+  (:dup (safe-push (safe-read 0 :mode :top-down)))
+  (:over (safe-push (safe-read 1 :mode :top-down)))
+  (:roll (pop-1 depth (let ((new-tos (safe-read depth :mode :top-down)))
                         (shift-down depth)
-                        (safe-write 0 new-tos))))
+                        (safe-write 0 new-tos :mode :top-down))))
   (:add (pop-2 a b (safe-push (+ a b))))
   (:sub (pop-2 a b (safe-push (- a b))))
   (:mul (pop-2 a b (safe-push (* a b))))
@@ -29,8 +31,6 @@
   (:halt (done)))
 
 (defvm-macros
-  (:dup '((:push 0) (:pick)))
-  (:over '((:push 1) (:pick)))
   (:swap '((:push 1) (:roll)))
   (:rot '((:push 2) (:roll)))
   (:inc '((:push 1) (:add)))

@@ -4,9 +4,9 @@
   `(defun execute (instruction stack sp pc)
      (let ((control '(:continue)))
        (macrolet
-           ((%validate-depth (depth &body body)
-              `(let ((stack-pos (- sp 1 ,depth)))
-                 (if (or (< ,depth 0) (< stack-pos 0))
+           ((%validate-index (index mode &body body)
+              `(let ((stack-pos (if (eq ,mode :bottom-up) ,index (- sp 1 ,index))))
+                 (if (or (< ,index 0) (< stack-pos 0) (>= stack-pos (length stack)))
                      (trap :stack-out-of-bounds)
                      ,@body)))
             (safe-pop ()
@@ -17,14 +17,14 @@
               `(if (>= sp (length stack))
                    (trap :stack-overflow)
                    (progn (setf (aref stack sp) ,val) (incf sp))))
-            (safe-read (depth)
-              `(%validate-depth ,depth
+            (safe-read (depth &key (mode :bottom-up))
+              `(%validate-index ,depth ,mode
                                 (aref stack stack-pos)))
-            (safe-write (depth value)
-              `(%validate-depth ,depth
+            (safe-write (depth value &key (mode :bottom-up))
+              `(%validate-index ,depth ,mode
                                 (setf (aref stack stack-pos) ,value)))
             (shift-down (depth)
-              `(%validate-depth ,depth
+              `(%validate-index ,depth :top-down
                                 (loop
                                   for idx from (1+ stack-pos) to (1- sp)
                                   do (setf (aref stack (1- idx)) (aref stack idx)))))

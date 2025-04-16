@@ -43,8 +43,8 @@
     (:jnz :done)
 
     ;; next = a + b
-    (:push 2) (:pick)                   ; a
-    (:push 2) (:pick)                   ; b
+    (:push 0) (:pick)                   ; a
+    (:push 1) (:pick)                   ; b
     (:add)                              ; next
 
     ;; update a and b
