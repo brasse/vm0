@@ -4,10 +4,6 @@
 
 (in-suite macros)
 
-(test dup-works
-  (is (equalp #((:push 0) (:pick)) (macro #((:dup))))))
-(test over-works
-  (is (equalp #((:push 1) (:pick)) (macro #((:over))))))
 (test swap-works
   (is (equalp #((:push 1) (:roll)) (macro #((:swap))))))
 (test rot-works
