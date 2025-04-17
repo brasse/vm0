@@ -67,7 +67,8 @@
 
       (multiple-value-bind (code-false offset-false)
           (compile-expr expr-b stack-frames offset)
-        (assert (= offset-true offset-false) () "both if branches must push equal number of values")
+        (assert (= offset-true offset-false (1+ offset)) ()
+                "both if branches must push exactly one values")
         (let ((label-else (genkey "else-")) (label-end (genkey "end-")))
           (values (append
                    code-cond
@@ -75,9 +76,8 @@
                    code-true
                    `((:jmp ,label-end) (:label ,label-else))
                    code-false
-                   `((:label ,label-end))
-                   (make-list (- offset-true offset) :initial-element `(:pop)))
-                  offset))))))
+                   `((:label ,label-end)))
+                  offset-true))))))
 
 (defun compile-expr (expr stack-frames &optional (offset 0))
   (cond
