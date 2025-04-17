@@ -32,6 +32,9 @@
 (defun genkey (prefix)
   (intern (format nil "~A" (gensym prefix)) :keyword))
 
+(defun clean-up-stack (n)
+  (make-list n :initial-element '(:pop)))
+
 (defun compile-let-bindings (bindings stack-frames offset)
   (let ((init-code '())
         (current-offset offset))
@@ -51,7 +54,7 @@
       (multiple-value-bind (code new-offset)
           (compile-expr expr stack-frames offset)
         (push code body-code)
-        (push (make-list (- new-offset offset) :initial-element '(:pop)) body-code)))
+        (push (clean-up-stack (- new-offset offset)) body-code)))
     (multiple-value-bind (final-code final-offset)
         (compile-expr (car (last body)) stack-frames offset)
       (push final-code body-code)
@@ -91,7 +94,7 @@
                  code-cond
                  `((:jz ,label-end))
                  code-body
-                 (make-list (- body-offset offset) :initial-element '(pop))
+                 (clean-up-stack (- body-offset offset))
                  `((:jmp ,label-start) (:label ,label-end)))
                 offset)))))
 
@@ -121,7 +124,7 @@
            (pop stack-frames)
            (values(append init-code
                           body-code
-                          (make-list (- final-offset offset) :initial-element '(:pop)))
+                          (clean-up-stack (- final-offset offset)))
                   offset)))))
 
     ((and (listp expr) (eq (car expr) '+))
