@@ -29,6 +29,9 @@
         (+ var-offset (frame-offset (car stack-frames)))
         (get-depth (cdr stack-frames) var))))
 
+(defun genkey (prefix)
+  (intern (format nil "~A" (gensym prefix)) :keyword))
+
 (defun compile-let-bindings (bindings stack-frames offset)
   (let ((init-code '())
         (current-offset offset))
@@ -53,6 +56,28 @@
         (compile-expr (car (last body)) stack-frames offset)
       (push final-code body-code)
       (values (apply #'append (nreverse body-code)) final-offset))))
+
+(defun compile-if (expr-cond expr-a expr-b stack-frames offset)
+  (multiple-value-bind (code-cond offset-cond)
+      (compile-expr expr-cond stack-frames offset)
+    (assert (= offset-cond (1+ offset)) () "if condition must push exactly one value")
+
+    (multiple-value-bind (code-true offset-true)
+        (compile-expr expr-a stack-frames offset)
+
+      (multiple-value-bind (code-false offset-false)
+          (compile-expr expr-b stack-frames offset)
+        (assert (= offset-true offset-false) () "both if branches must push equal number of values")
+        (let ((label-else (genkey "else-")) (label-end (genkey "end-")))
+          (values (append
+                   code-cond
+                   `((:jz ,label-else))
+                   code-true
+                   `((:jmp ,label-end) (:label ,label-else))
+                   code-false
+                   `((:label ,label-end))
+                   (make-list (- offset-true offset) :initial-element `(:pop)))
+                  offset))))))
 
 (defun compile-expr (expr stack-frames &optional (offset 0))
   (cond
@@ -90,6 +115,10 @@
          (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
            (assert (= offset-b (1+ offset-a)) () "RHS of + must push exactly one value")
            (values (append code-a code-b '((:add))) (1+ offset))))))
+
+    ((and (listp expr) (eq (car expr) 'if))
+     (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
+       (compile-if expr-cond expr-a expr-b stack-frames offset)))
 
     ;; handle let, if, while here ...
     (t (error "unknown expression: ~S" expr))))
