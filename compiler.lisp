@@ -79,6 +79,22 @@
                    `((:label ,label-end)))
                   offset-true))))))
 
+(defun compile-while (expr-cond body stack-frames offset)
+  (multiple-value-bind (code-cond offset-cond)
+      (compile-expr expr-cond stack-frames offset)
+    (assert (= offset-cond (1+ offset)) () "while condition must push exactly one value")
+    (let ((label-start (genkey "start-")) (label-end (genkey "end-")))
+      (multiple-value-bind (code-body body-offset)
+          (compile-body body stack-frames offset)
+        (values (append
+                 `((:label ,label-start))
+                 code-cond
+                 `((:jz ,label-end))
+                 code-body
+                 (make-list (- body-offset offset) :initial-element '(pop))
+                 `((:jmp ,label-start) (:label ,label-end)))
+                offset)))))
+
 (defun compile-expr (expr stack-frames &optional (offset 0))
   (cond
     ((numberp expr)
@@ -119,6 +135,10 @@
     ((and (listp expr) (eq (car expr) 'if))
      (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
        (compile-if expr-cond expr-a expr-b stack-frames offset)))
+
+    ((and (listp expr) (eq (car expr) 'while))
+     (destructuring-bind (expr-cond . body) (cdr expr)
+       (compile-while expr-cond body stack-frames offset)))
 
     ;; handle let, if, while here ...
     (t (error "unknown expression: ~S" expr))))
