@@ -51,7 +51,7 @@
       (multiple-value-bind (code new-offset)
           (compile-expr expr stack-frames offset)
         (push code body-code)
-        (push (make-list (- new-offset offset) :initial-element '((:pop))) body-code)))
+        (push (make-list (- new-offset offset) :initial-element '(:pop)) body-code)))
     (multiple-value-bind (final-code final-offset)
         (compile-expr (car (last body)) stack-frames offset)
       (push final-code body-code)
@@ -105,7 +105,7 @@
            (pop stack-frames)
            (values(append init-code
                           body-code
-                          (make-list (- final-offset offset) :initial-element '((:pop))))
+                          (make-list (- final-offset offset) :initial-element '(:pop)))
                   offset)))))
 
     ((and (listp expr) (eq (car expr) '+))
