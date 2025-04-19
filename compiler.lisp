@@ -35,6 +35,13 @@
 (defun clean-up-stack (n)
   (make-list n :initial-element '(:pop)))
 
+(defun expr-type (expr)
+  (cond
+    ((numberp expr) :number)
+    ((symbolp expr) :symbol)
+    ((listp expr) (intern (symbol-name (car expr)) :keyword))
+    (t (error "malformed expression: ~S" expr))))
+
 (defun compile-let-bindings (bindings stack-frames offset)
   (let ((init-code '())
         (current-offset offset))
@@ -99,14 +106,19 @@
                 offset)))))
 
 (defun compile-expr (expr stack-frames &optional (offset 0))
-  (cond
-    ((numberp expr)
+  (case (expr-type expr)
+    (:number
      (values `((:push ,expr)) (1+ offset)))
-    
-    ((symbolp expr)
+
+    (:symbol
      (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
-    
-    ((and (listp expr) (eq (car expr) 'set))
+
+    (:print
+     (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset)
+       (assert (= new-offset (1+ offset)) () "RHS of print must push exactly one value")
+       (values (append code '((:print))) offset)))
+
+    (:set
      (destructuring-bind (var expr-a) (cdr expr)
        (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
          (assert (= offset-a (1+ offset)) () "RHS of set must push exactly one value")
@@ -114,20 +126,20 @@
                          `((:push ,(get-depth stack-frames var)) (:set)))
                  offset))))
 
-    ((and (listp expr) (eq (car expr) 'let))
-     (destructuring-bind (bindings . body) (cdr expr)
-       (push (make-frame offset) stack-frames)
-       (multiple-value-bind (init-code init-offset)
-           (compile-let-bindings bindings stack-frames offset)
-         (multiple-value-bind (body-code final-offset)
-             (compile-body body stack-frames init-offset)
-           (pop stack-frames)
-           (values(append init-code
-                          body-code
-                          (clean-up-stack (- final-offset offset)))
-                  offset)))))
+    (:let
+        (destructuring-bind (bindings . body) (cdr expr)
+          (push (make-frame offset) stack-frames)
+          (multiple-value-bind (init-code init-offset)
+              (compile-let-bindings bindings stack-frames offset)
+            (multiple-value-bind (body-code final-offset)
+                (compile-body body stack-frames init-offset)
+              (pop stack-frames)
+              (values(append init-code
+                             body-code
+                             (clean-up-stack (- final-offset offset)))
+                     offset)))))
 
-    ((and (listp expr) (eq (car expr) '+))
+    (:+
      (destructuring-bind (expr-a expr-b) (cdr expr)
        (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
          (assert (= offset-a (1+ offset)) () "LHS of + must push exactly one value")
@@ -135,11 +147,27 @@
            (assert (= offset-b (1+ offset-a)) () "RHS of + must push exactly one value")
            (values (append code-a code-b '((:add))) (1+ offset))))))
 
-    ((and (listp expr) (eq (car expr) 'if))
+    (:=
+     (destructuring-bind (expr-a expr-b) (cdr expr)
+       (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+         (assert (= offset-a (1+ offset)) () "LHS of = must push exactly one value")
+         (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
+           (assert (= offset-b (1+ offset-a)) () "RHS of = must push exactly one value")
+           (values (append code-a code-b '((:eq))) (1+ offset))))))
+
+    (:<
+     (destructuring-bind (expr-a expr-b) (cdr expr)
+       (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+         (assert (= offset-a (1+ offset)) () "LHS of < must push exactly one value")
+         (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
+           (assert (= offset-b (1+ offset-a)) () "RHS of < must push exactly one value")
+           (values (append code-a code-b '((:lt))) (1+ offset))))))
+
+    (:if
      (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
        (compile-if expr-cond expr-a expr-b stack-frames offset)))
 
-    ((and (listp expr) (eq (car expr) 'while))
+    (:while
      (destructuring-bind (expr-cond . body) (cdr expr)
        (compile-while expr-cond body stack-frames offset)))
 
