@@ -88,6 +88,12 @@
                        (clean-up-stack (- final-offset offset)))
                offset)))))
 
+(defun compile-unop (expr instruction stack-frames offset)
+  (let ((expr-a (cadr expr)))
+    (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+      (assert (= offset-a (1+ offset)) () "RHS must push exactly one value")
+      (values (append code-a `((,instruction))) (1+ offset)))))
+
 (defun compile-binop (expr instruction stack-frames offset)
   (destructuring-bind (expr-a expr-b) (cdr expr)
     (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
@@ -136,6 +142,12 @@
                    `((:jmp ,label-start) (:label ,label-end)))
                   offset))))))
 
+(defmacro unop (keyword instruction)
+  `(;; case label
+    ,keyword
+    ;; compilation logic
+    (compile-unop expr ,instruction stack-frames offset)))
+
 (defmacro binop (keyword instruction)
   `(;; case label
     ,keyword
@@ -150,9 +162,9 @@
        (t (error "unknown expression: ~S" expr)))))
 
 (deflang-compile-expr
-    (:number (values `((:push ,expr)) (1+ offset)))
+  (:number (values `((:push ,expr)) (1+ offset)))
 
-    (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
+  (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
 
   (:print
    (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset)
@@ -183,6 +195,7 @@
                               code-a
                               '((:sub)))
                       (1+ offset))))))
+  (unop :not :not)
 
   (binop :+ :add)
   (binop :* :mul)
@@ -191,4 +204,6 @@
 
   (binop := :eq)
   (binop :< :lt)
-  (binop :> :gt))
+  (binop :<= :lte)
+  (binop :> :gt)
+  (binop :>= :gte))
