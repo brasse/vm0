@@ -173,8 +173,18 @@
 
   (:while (compile-while expr stack-frames offset))
 
+  (:- (destructuring-bind (a &optional b) (cdr expr)
+        (if b
+            (compile-binop expr :sub stack-frames offset)
+            (multiple-value-bind (code-a new-offset)
+                (compile-expr a stack-frames (1+ offset))
+              (assert (= new-offset (+ offset 2)) () "RHS of - must push exactly one value")
+              (values (append '((:push 0))
+                              code-a
+                              '((:sub)))
+                      (1+ offset))))))
+
   (binop :+ :add)
-  (binop :- :sub)
   (binop :* :mul)
   (binop :/ :div)
   (binop :% :mod)
