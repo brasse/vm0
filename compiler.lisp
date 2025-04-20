@@ -39,8 +39,16 @@
   (cond
     ((numberp expr) :number)
     ((symbolp expr) :symbol)
-    ((listp expr) (intern (symbol-name (car expr)) :keyword))
-    (t (error "malformed expression: ~S" expr))))
+    ((listp expr)
+     (let ((op (car expr)))
+       (cond
+         ;; If already a keyword, use it as-is
+         ((keywordp op) op)
+         ;; If a normal symbol, intern its name into :keyword
+         ((symbolp op) (intern (symbol-name op) :keyword))
+         ;; Otherwise, error
+         (t (error "Expression with invalid operator: ~S" expr)))))
+    (t (error "Malformed expression: ~S" expr))))
 
 (defun compile-let-bindings (bindings stack-frames offset)
   (let ((init-code '())
@@ -105,71 +113,71 @@
                  `((:jmp ,label-start) (:label ,label-end)))
                 offset)))))
 
-(defun compile-expr (expr stack-frames &optional (offset 0))
-  (case (expr-type expr)
-    (:number
-     (values `((:push ,expr)) (1+ offset)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun expand-binop (keyword instruction)
+    `(,keyword
+      (destructuring-bind (expr-a expr-b) (cdr expr)
+        (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+          (assert (= offset-a (1+ offset)) () "LHS must push exactly one value")
+          (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
+            (assert (= offset-b (1+ offset-a)) () "RHS must push exactly one value")
+            (values (append code-a code-b '((,instruction))) (1+ offset))))))))
 
-    (:symbol
-     (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
+(defmacro deflang-compile-expr (&rest rules)
+  `(defun compile-expr (expr stack-frames &optional (offset 0))
+     (case (expr-type expr)
+       ,@(loop for rule in rules
+               collect
+               (if (and (listp rule) (eq (car rule) 'binop))
+                   (expand-binop (second rule) (third rule))
+                   rule))
+       (t (error "unknown expression: ~S" expr)))))
 
-    (:print
-     (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset)
-       (assert (= new-offset (1+ offset)) () "RHS of print must push exactly one value")
-       (values (append code '((:print))) offset)))
+(deflang-compile-expr
+  (:number (values `((:push ,expr)) (1+ offset)))
 
-    (:set
-     (destructuring-bind (var expr-a) (cdr expr)
-       (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
-         (assert (= offset-a (1+ offset)) () "RHS of set must push exactly one value")
-         (values (append code-a
-                         `((:push ,(get-depth stack-frames var)) (:set)))
-                 offset))))
+  (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
 
-    (:let
-        (destructuring-bind (bindings . body) (cdr expr)
-          (push (make-frame offset) stack-frames)
-          (multiple-value-bind (init-code init-offset)
-              (compile-let-bindings bindings stack-frames offset)
-            (multiple-value-bind (body-code final-offset)
-                (compile-body body stack-frames init-offset)
-              (pop stack-frames)
-              (values(append init-code
-                             body-code
-                             (clean-up-stack (- final-offset offset)))
-                     offset)))))
+  (:print
+   (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset)
+     (assert (= new-offset (1+ offset)) () "RHS of print must push exactly one value")
+     (values (append code '((:print))) offset)))
 
-    (:+
-     (destructuring-bind (expr-a expr-b) (cdr expr)
-       (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
-         (assert (= offset-a (1+ offset)) () "LHS of + must push exactly one value")
-         (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
-           (assert (= offset-b (1+ offset-a)) () "RHS of + must push exactly one value")
-           (values (append code-a code-b '((:add))) (1+ offset))))))
+  (:set
+   (destructuring-bind (var expr-a) (cdr expr)
+     (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+       (assert (= offset-a (1+ offset)) () "RHS of set must push exactly one value")
+       (values (append code-a
+                       `((:push ,(get-depth stack-frames var)) (:set)))
+               offset))))
 
-    (:=
-     (destructuring-bind (expr-a expr-b) (cdr expr)
-       (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
-         (assert (= offset-a (1+ offset)) () "LHS of = must push exactly one value")
-         (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
-           (assert (= offset-b (1+ offset-a)) () "RHS of = must push exactly one value")
-           (values (append code-a code-b '((:eq))) (1+ offset))))))
+  (:let
+      (destructuring-bind (bindings . body) (cdr expr)
+        (push (make-frame offset) stack-frames)
+        (multiple-value-bind (init-code init-offset)
+            (compile-let-bindings bindings stack-frames offset)
+          (multiple-value-bind (body-code final-offset)
+              (compile-body body stack-frames init-offset)
+            (pop stack-frames)
+            (values(append init-code
+                           body-code
+                           (clean-up-stack (- final-offset offset)))
+                   offset)))))
 
-    (:<
-     (destructuring-bind (expr-a expr-b) (cdr expr)
-       (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
-         (assert (= offset-a (1+ offset)) () "LHS of < must push exactly one value")
-         (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
-           (assert (= offset-b (1+ offset-a)) () "RHS of < must push exactly one value")
-           (values (append code-a code-b '((:lt))) (1+ offset))))))
+  (:if
+   (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
+     (compile-if expr-cond expr-a expr-b stack-frames offset)))
 
-    (:if
-     (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
-       (compile-if expr-cond expr-a expr-b stack-frames offset)))
+  (:while
+   (destructuring-bind (expr-cond . body) (cdr expr)
+     (compile-while expr-cond body stack-frames offset)))
 
-    (:while
-     (destructuring-bind (expr-cond . body) (cdr expr)
-       (compile-while expr-cond body stack-frames offset)))
+  (binop :+ :add)
+  (binop :- :sub)
+  (binop :* :mul)
+  (binop :/ :div)
+  (binop :% :mod)
 
-    ;; handle let, if, while here ...
-    (t (error "unknown expression: ~S" expr))))
+  (binop := :eq)
+  (binop :< :lt)
+  (binop :> :gt))
