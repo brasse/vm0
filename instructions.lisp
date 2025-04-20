@@ -10,6 +10,7 @@
   (:roll (pop-1 depth (let ((new-tos (safe-read depth :mode :top-down)))
                         (shift-down depth)
                         (safe-write 0 new-tos :mode :top-down))))
+  (:not (pop-1 a (safe-push (if (zerop a) 1 0))))
   (:add (pop-2 a b (safe-push (+ a b))))
   (:sub (pop-2 a b (safe-push (- a b))))
   (:mul (pop-2 a b (safe-push (* a b))))
