@@ -36,6 +36,8 @@
   (:rot '((:push 2) (:roll)))
   (:inc '((:push 1) (:add)))
   (:dec '((:push 1) (:sub)))
+  (:lte '((:gt) (:not)))
+  (:gte '((:lt) (:not)))
   (:fn-args-1 '((:push 1) (:roll)))
   (:fn-args-2 '((:push 2) (:roll) (:push 2) (:roll)))
   (:fn-args-3 '((:push 3) (:roll) (:push 3) (:roll) (:push 3) (:roll)))
