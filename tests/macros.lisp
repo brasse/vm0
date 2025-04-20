@@ -12,6 +12,10 @@
   (is (equalp #((:push 1) (:add)) (macro #((:inc))))))
 (test dec-works
   (is (equalp #((:push 1) (:sub)) (macro #((:dec))))))
+(test lte-works
+  (is (equalp #((:gt) (:not)) (macro #((:lte))))))
+(test gte-works
+  (is (equalp #((:lt) (:not)) (macro #((:gte))))))
 (test fn-args-1-works
   (is (equalp #((:push 1) (:roll)) (macro #((:fn-args-1))))))
 (test fn-args-2-works
