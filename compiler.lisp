@@ -50,6 +50,18 @@
          (t (error "Expression with invalid operator: ~S" expr)))))
     (t (error "Malformed expression: ~S" expr))))
 
+(defun compile-body (body stack-frames offset)
+  (let ((body-code '()))
+    (loop for expr in (butlast body) do
+      (multiple-value-bind (code new-offset)
+          (compile-expr expr stack-frames offset)
+        (push code body-code)
+        (push (clean-up-stack (- new-offset offset)) body-code)))
+    (multiple-value-bind (final-code final-offset)
+        (compile-expr (car (last body)) stack-frames offset)
+      (push final-code body-code)
+      (values (apply #'append (nreverse body-code)) final-offset))))
+
 (defun compile-let-bindings (bindings stack-frames offset)
   (let ((init-code '())
         (current-offset offset))
@@ -63,55 +75,58 @@
           (setf current-offset offset-a))))
     (values (apply #'append (nreverse init-code)) current-offset)))
 
-(defun compile-body (body stack-frames offset)
-  (let ((body-code '()))
-    (loop for expr in (butlast body) do
-      (multiple-value-bind (code new-offset)
-          (compile-expr expr stack-frames offset)
-        (push code body-code)
-        (push (clean-up-stack (- new-offset offset)) body-code)))
-    (multiple-value-bind (final-code final-offset)
-        (compile-expr (car (last body)) stack-frames offset)
-      (push final-code body-code)
-      (values (apply #'append (nreverse body-code)) final-offset))))
+(defun compile-let (expr stack-frames offset)
+  (destructuring-bind (bindings . body) (cdr expr)
+    (push (make-frame offset) stack-frames)
+    (multiple-value-bind (init-code init-offset)
+        (compile-let-bindings bindings stack-frames offset)
+      (multiple-value-bind (body-code final-offset)
+          (compile-body body stack-frames init-offset)
+        (pop stack-frames)
+        (values(append init-code
+                       body-code
+                       (clean-up-stack (- final-offset offset)))
+               offset)))))
 
-(defun compile-if (expr-cond expr-a expr-b stack-frames offset)
-  (multiple-value-bind (code-cond offset-cond)
-      (compile-expr expr-cond stack-frames offset)
-    (assert (= offset-cond (1+ offset)) () "if condition must push exactly one value")
+(defun compile-if (expr stack-frames offset)
+  (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
+    (multiple-value-bind (code-cond offset-cond)
+        (compile-expr expr-cond stack-frames offset)
+      (assert (= offset-cond (1+ offset)) () "if condition must push exactly one value")
 
-    (multiple-value-bind (code-true offset-true)
-        (compile-expr expr-a stack-frames offset)
+      (multiple-value-bind (code-true offset-true)
+          (compile-expr expr-a stack-frames offset)
 
-      (multiple-value-bind (code-false offset-false)
-          (compile-expr expr-b stack-frames offset)
-        (assert (= offset-true offset-false (1+ offset)) ()
-                "both if branches must push exactly one values")
-        (let ((label-else (genkey "else-")) (label-end (genkey "end-")))
+        (multiple-value-bind (code-false offset-false)
+            (compile-expr expr-b stack-frames offset)
+          (assert (= offset-true offset-false (1+ offset)) ()
+                  "both if branches must push exactly one values")
+          (let ((label-else (genkey "else-")) (label-end (genkey "end-")))
+            (values (append
+                     code-cond
+                     `((:jz ,label-else))
+                     code-true
+                     `((:jmp ,label-end) (:label ,label-else))
+                     code-false
+                     `((:label ,label-end)))
+                    offset-true)))))))
+
+(defun compile-while (expr stack-frames offset)
+  (destructuring-bind (expr-cond . body) (cdr expr)
+    (multiple-value-bind (code-cond offset-cond)
+        (compile-expr expr-cond stack-frames offset)
+      (assert (= offset-cond (1+ offset)) () "while condition must push exactly one value")
+      (let ((label-start (genkey "start-")) (label-end (genkey "end-")))
+        (multiple-value-bind (code-body body-offset)
+            (compile-body body stack-frames offset)
           (values (append
+                   `((:label ,label-start))
                    code-cond
-                   `((:jz ,label-else))
-                   code-true
-                   `((:jmp ,label-end) (:label ,label-else))
-                   code-false
-                   `((:label ,label-end)))
-                  offset-true))))))
-
-(defun compile-while (expr-cond body stack-frames offset)
-  (multiple-value-bind (code-cond offset-cond)
-      (compile-expr expr-cond stack-frames offset)
-    (assert (= offset-cond (1+ offset)) () "while condition must push exactly one value")
-    (let ((label-start (genkey "start-")) (label-end (genkey "end-")))
-      (multiple-value-bind (code-body body-offset)
-          (compile-body body stack-frames offset)
-        (values (append
-                 `((:label ,label-start))
-                 code-cond
-                 `((:jz ,label-end))
-                 code-body
-                 (clean-up-stack (- body-offset offset))
-                 `((:jmp ,label-start) (:label ,label-end)))
-                offset)))))
+                   `((:jz ,label-end))
+                   code-body
+                   (clean-up-stack (- body-offset offset))
+                   `((:jmp ,label-start) (:label ,label-end)))
+                  offset))))))
 
 (defmacro binop (keyword instruction)
   `(;; case label
@@ -132,9 +147,9 @@
        (t (error "unknown expression: ~S" expr)))))
 
 (deflang-compile-expr
-  (:number (values `((:push ,expr)) (1+ offset)))
+    (:number (values `((:push ,expr)) (1+ offset)))
 
-  (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
+    (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
 
   (:print
    (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset)
@@ -149,26 +164,11 @@
                        `((:push ,(get-depth stack-frames var)) (:set)))
                offset))))
 
-  (:let
-      (destructuring-bind (bindings . body) (cdr expr)
-        (push (make-frame offset) stack-frames)
-        (multiple-value-bind (init-code init-offset)
-            (compile-let-bindings bindings stack-frames offset)
-          (multiple-value-bind (body-code final-offset)
-              (compile-body body stack-frames init-offset)
-            (pop stack-frames)
-            (values(append init-code
-                           body-code
-                           (clean-up-stack (- final-offset offset)))
-                   offset)))))
+  (:let (compile-let expr stack-frames offset))
 
-  (:if
-   (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
-     (compile-if expr-cond expr-a expr-b stack-frames offset)))
+  (:if (compile-if expr stack-frames offset))
 
-  (:while
-   (destructuring-bind (expr-cond . body) (cdr expr)
-     (compile-while expr-cond body stack-frames offset)))
+  (:while (compile-while expr stack-frames offset))
 
   (binop :+ :add)
   (binop :- :sub)
