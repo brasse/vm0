@@ -88,6 +88,14 @@
                        (clean-up-stack (- final-offset offset)))
                offset)))))
 
+(defun compile-binop (expr instruction stack-frames offset)
+  (destructuring-bind (expr-a expr-b) (cdr expr)
+    (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+      (assert (= offset-a (1+ offset)) () "LHS must push exactly one value")
+      (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
+        (assert (= offset-b (1+ offset-a)) () "RHS must push exactly one value")
+        (values (append code-a code-b `((,instruction))) (1+ offset))))))
+
 (defun compile-if (expr stack-frames offset)
   (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
     (multiple-value-bind (code-cond offset-cond)
@@ -132,12 +140,7 @@
   `(;; case label
     ,keyword
     ;; compilation logic
-    (destructuring-bind (expr-a expr-b) (cdr expr)
-      (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
-        (assert (= offset-a (1+ offset)) () "LHS must push exactly one value")
-        (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
-          (assert (= offset-b (1+ offset-a)) () "RHS must push exactly one value")
-          (values (append code-a code-b '((,instruction))) (1+ offset)))))))
+    (compile-binop expr ,instruction stack-frames offset)))
 
 (defmacro deflang-compile-expr (&rest rules)
   `(defun compile-expr (expr stack-frames &optional (offset 0))
