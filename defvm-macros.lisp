@@ -28,6 +28,11 @@
                                 (loop
                                   for idx from (1+ stack-pos) to (1- sp)
                                   do (setf (aref stack (1- idx)) (aref stack idx)))))
+            (shift-up (depth)
+              `(%validate-index ,depth :top-down
+                                (loop
+                                  for idx from (- sp 2) downto stack-pos
+                                  do (setf (aref stack (1+ idx)) (aref stack idx)))))
             (pop-1 (a &body body)
               `(let ((,a (safe-pop)))
                  ,@body))

@@ -33,6 +33,9 @@
 (stack-test roll-works
   #(2 3 1)
   #((:push 1) (:push 2) (:push 3) (:push 2) (:roll)))
+(stack-test iroll-works
+  #(3 1 2)
+  #((:push 1) (:push 2) (:push 3) (:push 2) (:iroll)))
 (stack-test not-works
   #(0 1)
   #((:push 32) (:not) (:push 0) (:not)))
