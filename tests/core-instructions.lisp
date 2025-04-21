@@ -81,15 +81,21 @@
 (stack-test jnz-works-when-not-jump
   #(10 42)
   #((:push 0) (:jnz 3) (:push 10) (:push 42)))
+;; TODO: need better tests for :call and :ret, these things are hard to understand.
 (stack-test call-works
-  #(1 20)
+  #(0 1 20)
   #((:call 2) (:push 10) (:push 20)))
 (stack-test ret-works
   #(20 10)
-  #((:call 3) (:push 10) (:halt) (:push 20) (:push 1) (:roll) (:ret)))
+  #((:call 3) (:push 10) (:halt) (:push 20) (:push 2) (:roll) (:push 2) (:roll) (:ret)))
 (stack-test halt-works
   #(10)
   #((:push 10) (:halt) (:push 20)))
+
+;; TODO: need better frame pointer tests
+(stack-test frame-pointer-is-updated-on-call
+  #(42 0 2 42)
+  #((:push 42) (:call 3) (:push 13) (:push -1) (:pick)))
 
 (stack-test print-pops
   #()

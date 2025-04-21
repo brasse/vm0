@@ -1,12 +1,12 @@
 (in-package :vm0)
 
 (defmacro defvm-instructions (&rest instructions)
-  `(defun execute (instruction stack sp pc)
+  `(defun execute (instruction stack sp fp pc)
      (let ((control '(:continue)))
        (macrolet
            ((%validate-index (index mode &body body)
-              `(let ((stack-pos (if (eq ,mode :bottom-up) ,index (- sp 1 ,index))))
-                 (if (or (< ,index 0) (< stack-pos 0) (>= stack-pos (length stack)))
+              `(let ((stack-pos (if (eq ,mode :bottom-up) (+ fp ,index) (- sp 1 ,index))))
+                 (if (or (< stack-pos 0) (>= stack-pos (length stack)))
                      (trap :stack-out-of-bounds)
                      ,@body)))
             (safe-pop ()
@@ -38,18 +38,18 @@
               `(let ((,c (safe-pop)) (,b (safe-pop)) (,a (safe-pop)))
                  ,@body))
             (jump (target)
-              `(return-from execute (values (list :jump ,target) sp)))
+              `(return-from execute (values (list :jump ,target) sp fp)))
             (trap (reason)
-              `(return-from execute (values (list :trap ,reason) sp)))
+              `(return-from execute (values (list :trap ,reason) sp fp)))
             (done ()
-              `(return-from execute (values '(:done) sp))))
+              `(return-from execute (values '(:done) sp fp))))
 
          (case (car instruction)
            ,@(loop for (name . body) in instructions
                    collect `(,name ,@body))
            (t (setf control `(:trap :unknown-instruction ,(car instruction))))))
 
-       (values control sp))))
+       (values control sp fp))))
 
 (defmacro defvm-macros (&rest macros)
   `(defun macro (program)
