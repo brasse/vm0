@@ -207,3 +207,9 @@
   (binop :<= :lte)
   (binop :> :gt)
   (binop :>= :gte))
+
+(defun compile-program (program)
+  (loop for expr in program
+        append (multiple-value-bind (code offset) (compile-expr expr '())
+                 (assert (zerop offset) () "expression in program must clean up stack")
+                 code)))
