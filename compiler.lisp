@@ -3,23 +3,32 @@
 (defun print-frame (f stream depth)
   (declare (ignore depth))
   (print-unreadable-object (f stream :type t)
-    (format stream "offset=~A vars=~S"
+    (format stream "offset=~A vars=~S next-var-index=~A"
             (frame-offset f)
             (loop for k being the hash-keys of (frame-vars f)
-                  collect (list k (gethash k (frame-vars f)))))))
+                  collect (list k (gethash k (frame-vars f))))
+            (frame-next-var-index f))))
 
 (defstruct (frame (:constructor %make-frame) (:print-function print-frame))
   vars
-  offset)
+  offset
+  next-var-index)
 
-(defun make-frame (&optional (offset 0))
-  (%make-frame :vars (make-hash-table) :offset offset))
+(defun make-frame (&key (offset 0) (start-var-index 0) (vars '()))
+  (let
+      ((frame
+         (%make-frame :vars (make-hash-table) :offset offset :next-var-index start-var-index)))
+    (loop for var in vars do
+      (frame-add-binding frame var))
+    frame))
 
 (defun frame-add-binding (frame var)
   (let ((vars (frame-vars frame)))
     (if (gethash var vars)
         (error "binding ~S already used" var)
-        (setf (gethash var vars) (hash-table-count vars)))))
+        (progn
+          (setf (gethash var vars) (frame-next-var-index frame))
+          (incf (frame-next-var-index frame))))))
 
 (defun get-depth (stack-frames var)
   (when (null stack-frames)
@@ -29,26 +38,39 @@
         (+ var-offset (frame-offset (car stack-frames)))
         (get-depth (cdr stack-frames) var))))
 
+(defstruct (function-info)
+  name
+  arity
+  ast
+  code)
+
 (defun genkey (prefix)
   (intern (format nil "~A" (gensym prefix)) :keyword))
 
+(defun function-label (name)
+  (intern (format nil "fn-~A" name) :keyword))
+
 (defun clean-up-stack (n)
   (make-list n :initial-element '(:pop)))
+
+(defun to-keyword (symbol)
+  (cond
+    ((keywordp symbol) symbol)
+    ((symbolp symbol) (intern (symbol-name symbol) :keyword))
+    (t (error "don't know how to turn ~S into a keyword" symbol))))
+
+(defparameter *special-forms* '(fn let set if while not - + * / % = < <= > >= print))
 
 (defun expr-type (expr)
   (cond
     ((numberp expr) :number)
     ((symbolp expr) :symbol)
     ((listp expr)
-     (let ((op (car expr)))
-       (cond
-         ;; If already a keyword, use it as-is
-         ((keywordp op) op)
-         ;; If a normal symbol, intern its name into :keyword
-         ((symbolp op) (intern (symbol-name op) :keyword))
-         ;; Otherwise, error
-         (t (error "Expression with invalid operator: ~S" expr)))))
-    (t (error "Malformed expression: ~S" expr))))
+     (let ((head (car expr)))
+       (cond ((member head *special-forms*) (to-keyword head))
+             ((symbolp head) :call)
+             (t (error "unknown expression head: ~S" head)))))
+    (t (error "malformed expression: ~S" expr))))
 
 (defun compile-body (body stack-frames offset)
   (let ((body-code '()))
@@ -77,7 +99,7 @@
 
 (defun compile-let (expr stack-frames offset)
   (destructuring-bind (bindings . body) (cdr expr)
-    (push (make-frame offset) stack-frames)
+    (push (make-frame :offset offset) stack-frames)
     (multiple-value-bind (init-code init-offset)
         (compile-let-bindings bindings stack-frames offset)
       (multiple-value-bind (body-code final-offset)
@@ -87,6 +109,48 @@
                        body-code
                        (clean-up-stack (- final-offset offset)))
                offset)))))
+
+(defun compile-fn (expr)
+  (destructuring-bind (name args . body) (cdr expr)
+    (let ((n-args (length args)))
+      (multiple-value-bind (code new-offset)
+          (compile-body body (list (make-frame :start-var-index (- n-args) :vars args)) 0)
+        (assert (= 1 new-offset) () "function body must push exactly one value")
+        (values (append
+                 `((:label ,(function-label name)))
+                 code
+                 ;; bring up sp and fp
+                 (loop repeat 2 append '((:push 2) (:roll)))
+                 '((:ret))))))))
+
+(defun compile-arg-list (arg-list stack-frames offset)
+  (let ((arg-offset offset))
+    (values
+     (loop for arg-expr in arg-list
+           append (multiple-value-bind (arg-code new-offset)
+                      (compile-expr arg-expr stack-frames arg-offset)
+                    (assert (= new-offset (1+ arg-offset)) () "arg must push exactly one value")
+                    (incf arg-offset)
+                    arg-code))
+     (+ offset (length arg-list)))))
+
+(defun compile-call (expr stack-frames offset)
+  (declare (special function-table))
+  (destructuring-bind (name . arg-list) expr
+    (let ((function-info (gethash name function-table)) (n-args (length arg-list)))
+      (unless function-info (error "unknown function: ~A" name))
+      (let ((arity (function-info-arity function-info)))
+        (unless (= arity n-args)
+          (error "function ~A called with ~A args, expects ~A" name n-args arity))
+        (multiple-value-bind (arg-list-code arg-offset) (compile-arg-list arg-list stack-frames offset)
+          (declare (ignore arg-offset))
+          (values (append arg-list-code
+                          `((:call ,(function-label name))
+                            ;; put return value below args
+                            (:push ,n-args) (:iroll))
+                          ;; pop args
+                          (loop repeat n-args append '((:pop))))
+                  (1+ offset)))))))
 
 (defun compile-unop (expr instruction stack-frames offset)
   (let ((expr-a (cadr expr)))
@@ -162,9 +226,9 @@
        (t (error "unknown expression: ~S" expr)))))
 
 (deflang-compile-expr
-  (:number (values `((:push ,expr)) (1+ offset)))
+    (:number (values `((:push ,expr)) (1+ offset)))
 
-  (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
+    (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
 
   (:print
    (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset)
@@ -184,6 +248,10 @@
   (:if (compile-if expr stack-frames offset))
 
   (:while (compile-while expr stack-frames offset))
+
+  (:fn (values '() offset))
+
+  (:call (compile-call expr stack-frames offset))
 
   (:- (destructuring-bind (a &optional b) (cdr expr)
         (if b
@@ -208,8 +276,43 @@
   (binop :> :gt)
   (binop :>= :gte))
 
+(defun collect-functions (ast &optional (function-table (make-hash-table)))
+  (cond
+    ((and (listp ast) (eq (car ast) 'fn))
+     ;; found a function, store it!
+     (let ((name (cadr ast))
+           (args (caddr ast)))
+       (unless (symbolp name)
+         (error "function name must be a symbol: ~A" name))
+       (unless (listp args)
+         (error "function arguments for ~A must be a list: ~A" name args))
+       (if (gethash name function-table)
+           (error "function name collision: ~A" name)
+           (setf (gethash name function-table)
+                 (make-function-info :name name :arity (length args) :ast ast)))))
+    ((listp ast)
+     ;; walk into subexpressions
+     (loop for expr in ast do
+       (collect-functions expr function-table)))
+    ;; atoms: ignore
+    (t nil))
+  function-table)
+
+(defun compile-functions (function-table)
+  (loop for function-info being the hash-values in function-table
+        do (setf (function-info-code function-info)
+                 (compile-fn (function-info-ast function-info))))
+  function-table)
+
 (defun compile-program (program)
-  (loop for expr in program
-        append (multiple-value-bind (code offset) (compile-expr expr '())
-                 (assert (zerop offset) () "expression in program must clean up stack")
-                 code)))
+  (let ((function-table (collect-functions program)))
+    (declare (special function-table))
+    (compile-functions function-table)
+    (append
+     (loop for expr in program
+           append (multiple-value-bind (code offset) (compile-expr expr '())
+                    (assert (zerop offset) () "expression in program must clean up stack")
+                    code))
+     '((:halt))
+     (loop for function-info being the hash-values in function-table
+           append (function-info-code function-info)))))
