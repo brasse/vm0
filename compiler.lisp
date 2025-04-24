@@ -59,7 +59,7 @@
     ((symbolp symbol) (intern (symbol-name symbol) :keyword))
     (t (error "don't know how to turn ~S into a keyword" symbol))))
 
-(defparameter *special-forms* '(fn let set if while not - + * / % = < <= > >= print))
+(defparameter *special-forms* '(fn progn let set if while not - + * / % = < <= > >= print))
 
 (defun expr-type (expr)
   (cond
@@ -219,7 +219,7 @@
     (compile-binop expr ,instruction stack-frames offset)))
 
 (defmacro deflang-compile-expr (&rest rules)
-  `(defun compile-expr (expr stack-frames &optional (offset 0))
+  `(defun compile-expr (expr &optional (stack-frames '()) (offset 0))
      (case (expr-type expr)
        ,@(loop for rule in rules
                collect (macroexpand rule))
@@ -248,6 +248,11 @@
   (:if (compile-if expr stack-frames offset))
 
   (:while (compile-while expr stack-frames offset))
+
+  (:progn
+    (multiple-value-bind (code new-offset) (compile-body (cdr expr) stack-frames offset)
+      (assert (= new-offset (1+ offset)) () "progn needs to push exactly one value")
+      (values code (1+ offset))))
 
   (:fn (values '() offset))
 
