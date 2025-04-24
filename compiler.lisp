@@ -1,5 +1,16 @@
 (in-package :vm0)
 
+(define-condition compiler-error (error)
+  ((message :initarg :message :reader compiler-error-message)
+   (expr :initarg :expr :reader compiler-error-expr))
+  (:report (lambda (c s)
+             (format s "compiler error: ~A~%in: ~S"
+                     (compiler-error-message c)
+                     (compiler-error-expr c)))))
+
+(defun compiler-error (message &optional expr)
+  (error 'compiler-error :message message :expr expr))
+
 (defun print-frame (f stream depth)
   (declare (ignore depth))
   (print-unreadable-object (f stream :type t)
@@ -25,14 +36,14 @@
 (defun frame-add-binding (frame var)
   (let ((vars (frame-vars frame)))
     (if (gethash var vars)
-        (error "binding ~S already used" var)
+        (compiler-error (format nil "variable ~A already used" var))
         (progn
           (setf (gethash var vars) (frame-next-var-index frame))
           (incf (frame-next-var-index frame))))))
 
 (defun get-depth (stack-frames var)
   (when (null stack-frames)
-    (error "binding ~S not found" var))
+    (compiler-error (format nil "variable ~A not found" var)))
   (let ((var-offset (gethash var (frame-vars (car stack-frames)))))
     (if var-offset
         (+ var-offset (frame-offset (car stack-frames)))
@@ -57,7 +68,7 @@
   (cond
     ((keywordp symbol) symbol)
     ((symbolp symbol) (intern (symbol-name symbol) :keyword))
-    (t (error "don't know how to turn ~S into a keyword" symbol))))
+    (t (compiler-error (format nil "don't know how to turn ~S into a keyword" symbol)))))
 
 (defparameter *special-forms* '(fn progn let set if while not - + * / % = < <= > >= print))
 
@@ -69,10 +80,17 @@
      (let ((head (car expr)))
        (cond ((member head *special-forms*) (to-keyword head))
              ((symbolp head) :call)
-             (t (error "unknown expression head: ~S" head)))))
-    (t (error "malformed expression: ~S" expr))))
+             (t (compiler-error (format nil "unknown expression head: ~A" head) expr)))))
+    (t (compiler-error "malformed expression" expr))))
 
-(defun compile-body (body stack-frames offset)
+(defun ensure-one-value (old-offset new-offset expr context)
+  (unless (= new-offset (1+ old-offset))
+    (compiler-error (format nil "~A must push exactly one value" context) expr)))
+
+(defun compile-body (body stack-frames offset &optional (context "body") (context-expr nil))
+  (unless (> (length body) 0)
+    (compiler-error (format nil "~A must have at least one expression" context)
+                    (or context-expr body)))
   (let ((body-code '()))
     (loop for expr in (butlast body) do
       (multiple-value-bind (code new-offset)
@@ -88,10 +106,14 @@
   (let ((init-code '())
         (current-offset offset))
     (loop for binding in bindings do
+      (unless (and (listp binding)
+                   (= (length binding) 2)
+                   (symbolp (car binding)))
+        (compiler-error "let binding must be (symbol expr)" binding))
       (destructuring-bind (var expr-a) binding
         (multiple-value-bind (code-a offset-a)
             (compile-expr expr-a stack-frames current-offset)
-          (assert (= offset-a (1+ current-offset)) () "RHS of let must push exactly one value")
+          (ensure-one-value current-offset offset-a expr-a "value of let bind")
           (push code-a init-code)
           (frame-add-binding (car stack-frames) var)
           (setf current-offset offset-a))))
@@ -103,7 +125,7 @@
     (multiple-value-bind (init-code init-offset)
         (compile-let-bindings bindings stack-frames offset)
       (multiple-value-bind (body-code final-offset)
-          (compile-body body stack-frames init-offset)
+          (compile-body body stack-frames init-offset "let body" expr)
         (pop stack-frames)
         (values(append init-code
                        body-code
@@ -114,8 +136,9 @@
   (destructuring-bind (name args . body) (cdr expr)
     (let ((n-args (length args)))
       (multiple-value-bind (code new-offset)
-          (compile-body body (list (make-frame :start-var-index (- n-args) :vars args)) 0)
-        (assert (= 1 new-offset) () "function body must push exactly one value")
+          (compile-body body (list (make-frame :start-var-index (- n-args) :vars args)) 0
+                        (format nil "function body of ~A" name) expr)
+        (ensure-one-value 0 new-offset body "function body")
         (values (append
                  `((:label ,(function-label name)))
                  code
@@ -129,7 +152,7 @@
      (loop for arg-expr in arg-list
            append (multiple-value-bind (arg-code new-offset)
                       (compile-expr arg-expr stack-frames arg-offset)
-                    (assert (= new-offset (1+ arg-offset)) () "arg must push exactly one value")
+                    (ensure-one-value arg-offset new-offset arg-expr "function argument")
                     (incf arg-offset)
                     arg-code))
      (+ offset (length arg-list)))))
@@ -138,10 +161,11 @@
   (declare (special function-table))
   (destructuring-bind (name . arg-list) expr
     (let ((function-info (gethash name function-table)) (n-args (length arg-list)))
-      (unless function-info (error "unknown function: ~A" name))
+      (unless function-info (compiler-error (format nil "unknown function: ~A" name)))
       (let ((arity (function-info-arity function-info)))
         (unless (= arity n-args)
-          (error "function ~A called with ~A args, expects ~A" name n-args arity))
+          (compiler-error
+           (format nil "function ~A called with ~A args, expects ~A" name n-args arity)))
         (multiple-value-bind (arg-list-code arg-offset) (compile-arg-list arg-list stack-frames offset)
           (declare (ignore arg-offset))
           (values (append arg-list-code
@@ -155,30 +179,32 @@
 (defun compile-unop (expr instruction stack-frames offset)
   (let ((expr-a (cadr expr)))
     (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
-      (assert (= offset-a (1+ offset)) () "RHS must push exactly one value")
+      (ensure-one-value offset offset-a expr-a (format nil "argument of ~A" (car expr)))
       (values (append code-a `((,instruction))) (1+ offset)))))
 
 (defun compile-binop (expr instruction stack-frames offset)
   (destructuring-bind (expr-a expr-b) (cdr expr)
     (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
-      (assert (= offset-a (1+ offset)) () "LHS must push exactly one value")
+      (ensure-one-value offset offset-a expr-a (format nil "LHS of ~A" (car expr)))
       (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
-        (assert (= offset-b (1+ offset-a)) () "RHS must push exactly one value")
+        (ensure-one-value offset-a offset-b expr-b (format nil "RHS of ~A" (car expr)))
         (values (append code-a code-b `((,instruction))) (1+ offset))))))
 
 (defun compile-if (expr stack-frames offset)
+  (unless (= (length (cdr expr)) 3)
+    (compiler-error "if must have exactly three aruments" expr))
   (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
     (multiple-value-bind (code-cond offset-cond)
         (compile-expr expr-cond stack-frames offset)
-      (assert (= offset-cond (1+ offset)) () "if condition must push exactly one value")
+      (ensure-one-value offset offset-cond expr-cond "if condition")
 
       (multiple-value-bind (code-true offset-true)
           (compile-expr expr-a stack-frames offset)
 
         (multiple-value-bind (code-false offset-false)
             (compile-expr expr-b stack-frames offset)
-          (assert (= offset-true offset-false (1+ offset)) ()
-                  "both if branches must push exactly one values")
+          (ensure-one-value offset offset-true expr-a "if true branch")
+          (ensure-one-value offset offset-false expr-b "if false branch")
           (let ((label-else (genkey "else-")) (label-end (genkey "end-")))
             (values (append
                      code-cond
@@ -190,10 +216,12 @@
                     offset-true)))))))
 
 (defun compile-while (expr stack-frames offset)
+  (unless (>= (length (cdr expr)) 2)
+    (compiler-error "while must have at least two arguments" expr))
   (destructuring-bind (expr-cond . body) (cdr expr)
     (multiple-value-bind (code-cond offset-cond)
         (compile-expr expr-cond stack-frames offset)
-      (assert (= offset-cond (1+ offset)) () "while condition must push exactly one value")
+      (ensure-one-value offset offset-cond expr-cond "while condition")
       (let ((label-start (genkey "start-")) (label-end (genkey "end-")))
         (multiple-value-bind (code-body body-offset)
             (compile-body body stack-frames offset)
@@ -223,7 +251,7 @@
      (case (expr-type expr)
        ,@(loop for rule in rules
                collect (macroexpand rule))
-       (t (error "unknown expression: ~S" expr)))))
+       (t (compiler-error "unknown expression" expr)))))
 
 (deflang-compile-expr
     (:number (values `((:push ,expr)) (1+ offset)))
@@ -231,14 +259,19 @@
     (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
 
   (:print
+   (unless (cdr expr)
+     (compiler-error "print requires exactly one value" expr))
    (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset)
-     (assert (= new-offset (1+ offset)) () "RHS of print must push exactly one value")
+     (ensure-one-value offset new-offset (cadr expr) "argument of print")
      (values (append code '((:print))) offset)))
 
   (:set
+   (unless (and (= (length expr) 3)
+                (symbolp (cadr expr)))
+     (compiler-error "set must be (set symbol expr)" expr))
    (destructuring-bind (var expr-a) (cdr expr)
      (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
-       (assert (= offset-a (1+ offset)) () "RHS of set must push exactly one value")
+       (ensure-one-value offset offset-a expr-a "argument of set")
        (values (append code-a
                        `((:push ,(get-depth stack-frames var)) (:set)))
                offset))))
@@ -250,8 +283,10 @@
   (:while (compile-while expr stack-frames offset))
 
   (:progn
+    (unless (> (length (cdr expr)) 0)
+      (compiler-error "body of progn must have at least one exprssion"))
     (multiple-value-bind (code new-offset) (compile-body (cdr expr) stack-frames offset)
-      (assert (= new-offset (1+ offset)) () "progn needs to push exactly one value")
+      (ensure-one-value offset new-offset expr "progn")
       (values code (1+ offset))))
 
   (:fn (values '() offset))
@@ -263,7 +298,9 @@
             (compile-binop expr :sub stack-frames offset)
             (multiple-value-bind (code-a new-offset)
                 (compile-expr a stack-frames (1+ offset))
-              (assert (= new-offset (+ offset 2)) () "RHS of - must push exactly one value")
+              ;; TODO: consider binop and unop macros to work with instruction templates
+              ;;       perpaps when this pattern show up again
+              (unless (= new-offset (+ offset 2)) "RHS of - must push exactly one value" a)
               (values (append '((:push 0))
                               code-a
                               '((:sub)))
@@ -288,11 +325,14 @@
      (let ((name (cadr ast))
            (args (caddr ast)))
        (unless (symbolp name)
-         (error "function name must be a symbol: ~A" name))
-       (unless (listp args)
-         (error "function arguments for ~A must be a list: ~A" name args))
+         (compiler-error (format nil "function name must be a symbol: ~A" name)))
+       (unless (and (listp args) (every #'symbolp args))
+         (compiler-error
+          (format nil "function arguments for ~A must be a list of symbols: ~A" name args)))
+       (unless (= (length args) (length (remove-duplicates args)))
+         (compiler-error (format nil "duplicate arguments in function ~A: ~A" name args)))
        (if (gethash name function-table)
-           (error "function name collision: ~A" name)
+           (compiler-error (format nil "function name collision: ~A" name))
            (setf (gethash name function-table)
                  (make-function-info :name name :arity (length args) :ast ast)))))
     ((listp ast)
