@@ -99,6 +99,12 @@
 (stack-test frame-pointer-is-updated-on-call
   #(42 0 2 42)
   #((:push 42) (:call 3) (:push 13) (:push -1) (:pick)))
+(stack-test can-get-fp
+  #(42 0 2 1)
+  #((:push 42) (:call 3) (:push 13) (:getfp)))
+(stack-test can-set-fp
+  #(42)
+  #((:push 42) (:setfp) (:getfp)))
 
 (stack-test print-pops
   #()

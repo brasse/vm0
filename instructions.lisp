@@ -32,6 +32,8 @@
   (:call (let ((%sp sp))
            (safe-push fp) (safe-push pc) (setf fp %sp) (jump (cadr instruction))))
   (:ret (pop-2 %fp %pc (setf fp %fp) (jump %pc)))
+  (:getfp (safe-push fp))
+  (:setfp (pop-1 %fp (setf fp %fp)))
   (:print (pop-1 a (format t "~A~%" a)))
   (:halt (done)))
 
