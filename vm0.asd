@@ -10,7 +10,8 @@
                (:file "assembler")
                (:file "compiler")
                (:file "vm")
-               (:file "examples/examples")))
+               (:file "examples/examples-asm")
+               (:file "examples/examples-stak")))
 
 (asdf:defsystem "vm0/tests"
   :depends-on ("vm0" "fiveam" "split-sequence")
