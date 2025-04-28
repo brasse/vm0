@@ -87,7 +87,7 @@
   (unless (= new-offset (1+ old-offset))
     (compiler-error (format nil "~A must push exactly one value" context) expr)))
 
-(defun compile-body (body stack-frames offset &optional (context "body") (context-expr nil))
+(defun compile-body (body stack-frames offset tailp &optional (context "body") (context-expr nil))
   (unless (> (length body) 0)
     (compiler-error (format nil "~A must have at least one expression" context)
                     (or context-expr body)))
@@ -98,7 +98,7 @@
         (push code body-code)
         (push (clean-up-stack (- new-offset offset)) body-code)))
     (multiple-value-bind (final-code final-offset)
-        (compile-expr (car (last body)) stack-frames offset)
+        (compile-expr (car (last body)) stack-frames offset tailp)
       (push final-code body-code)
       (values (apply #'append (nreverse body-code)) final-offset))))
 
@@ -119,13 +119,13 @@
           (setf current-offset offset-a))))
     (values (apply #'append (nreverse init-code)) current-offset)))
 
-(defun compile-let (expr stack-frames offset)
+(defun compile-let (expr stack-frames offset tailp)
   (destructuring-bind (bindings . body) (cdr expr)
     (push (make-frame :offset offset) stack-frames)
     (multiple-value-bind (init-code init-offset)
         (compile-let-bindings bindings stack-frames offset)
       (multiple-value-bind (body-code final-offset)
-          (compile-body body stack-frames init-offset "let body" expr)
+          (compile-body body stack-frames init-offset tailp "let body" expr)
         (pop stack-frames)
         (values(append init-code
                        body-code
@@ -136,7 +136,7 @@
   (destructuring-bind (name args . body) (cdr expr)
     (let ((n-args (length args)))
       (multiple-value-bind (code new-offset)
-          (compile-body body (list (make-frame :start-var-index (- n-args) :vars args)) 0
+          (compile-body body (list (make-frame :start-var-index (- (1+ n-args)) :vars args)) 0 t
                         (format nil "function body of ~A" name) expr)
         (ensure-one-value 0 new-offset body "function body")
         (values (append
@@ -157,7 +157,77 @@
                     arg-code))
      (+ offset (length arg-list)))))
 
-(defun compile-call (expr stack-frames offset)
+(defun normal-call (name arg-list-code n-args)
+  (let ((pop-start (genkey "pop-start-")) (pop-end (genkey "pop-end-")))
+    (append arg-list-code
+            `((:push ,n-args)
+              (:call ,(function-label name))
+
+              ;; stack: [ x arg1 arg2 n-args v ]
+              (:push 1) (:roll)
+
+              ;; stack: [ x arg1 arg2 v n-args ]
+              ;; pop all args
+              (:label ,pop-start)
+              (:dup)
+              (:jz ,pop-end)
+              (:push 2) (:roll) (:pop) (:dec)
+              (:jmp ,pop-start)
+              (:label ,pop-end)
+
+              ;; stack: [ x v 0 ]
+              (:pop)))))
+
+(defun tail-call (name arg-list-code n-args)
+  (let ((pop-old-start (genkey "pop-old-start-")) (pop-old-end (genkey "pop-old-end-")))
+    (append arg-list-code
+            `(;; stack: [ x old-arg1 old-arg2 old-n-args fp pc new-arg1 ]
+              (:push ,(+ n-args 2)) (:roll) (:dup) ;; we need an extra copy later
+
+              ;; stack: [ x old-arg1 old-arg2 fp pc new-arg1 old-n-args old-n-args]
+              ;; pop all old args
+              (:label ,pop-old-start)
+              (:dup)
+              (:jz ,pop-old-end)
+              (:push ,n-args) (:push 4) (:add) (:roll) (:pop)
+              (:dec)
+              (:jmp ,pop-old-start)
+              (:label ,pop-old-end)
+
+              ;; stack: [ x fp pc new-arg1 old-n-args 0 ]
+              ;; clean up counter
+              (:pop)
+
+              ;; stack: [ x fp pc new-arg1 old-n-args ]
+              ;; bring up fp and pc above new args
+              (:push ,(+ n-args 2)) (:roll)
+              (:push ,(+ n-args 2)) (:roll)
+
+              ;; stack: [ x new-arg1 old-n-args fp pc ]
+              ;; bring up old-n-args
+              (:push 2) (:roll)
+
+              ;; stack: [ x new-arg1 fp pc old-n-args ]
+              ;; get current fp and swap to prepare for sub
+              (:getfp) (:swap)
+
+              ;; stack: [ x new-arg1 fp pc current-fp old-n-args ]
+              ;; calculate new fp
+              (:sub) (:push ,n-args) (:add)
+
+              ;; stack: [ x new-arg1 fp pc (current-fp - old-n-args + new-n-args) ]
+              (:setfp)
+
+              ;; stack: [ x new-arg1 fp pc ]
+              ;; push new-n-args and put it below fp and pc
+              (:push ,n-args)
+              (:push 2) (:roll)
+              (:push 2) (:roll)
+
+              ;; stack: [x new-arg1 new-n-arg fp pc ]
+              (:jmp ,(function-label name))))))
+
+(defun compile-call (expr stack-frames offset tailp)
   (declare (special function-table))
   (destructuring-bind (name . arg-list) expr
     (let ((function-info (gethash name function-table)) (n-args (length arg-list)))
@@ -168,41 +238,39 @@
            (format nil "function ~A called with ~A args, expects ~A" name n-args arity)))
         (multiple-value-bind (arg-list-code arg-offset) (compile-arg-list arg-list stack-frames offset)
           (declare (ignore arg-offset))
-          (values (append arg-list-code
-                          `((:call ,(function-label name))
-                            ;; put return value below args
-                            (:push ,n-args) (:iroll))
-                          ;; pop args
-                          (loop repeat n-args append '((:pop))))
-                  (1+ offset)))))))
+          (values
+           (if tailp
+               (tail-call name arg-list-code n-args)
+               (normal-call name arg-list-code n-args))
+           (1+ offset)))))))
 
 (defun compile-unop (expr instruction stack-frames offset)
   (let ((expr-a (cadr expr)))
-    (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+    (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset nil)
       (ensure-one-value offset offset-a expr-a (format nil "argument of ~A" (car expr)))
       (values (append code-a `((,instruction))) (1+ offset)))))
 
 (defun compile-binop (expr instruction stack-frames offset)
   (destructuring-bind (expr-a expr-b) (cdr expr)
-    (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+    (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset nil)
       (ensure-one-value offset offset-a expr-a (format nil "LHS of ~A" (car expr)))
-      (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a)
+      (multiple-value-bind (code-b offset-b) (compile-expr expr-b stack-frames offset-a nil)
         (ensure-one-value offset-a offset-b expr-b (format nil "RHS of ~A" (car expr)))
         (values (append code-a code-b `((,instruction))) (1+ offset))))))
 
-(defun compile-if (expr stack-frames offset)
+(defun compile-if (expr stack-frames offset tailp)
   (unless (= (length (cdr expr)) 3)
     (compiler-error "if must have exactly three aruments" expr))
   (destructuring-bind (expr-cond expr-a expr-b) (cdr expr)
     (multiple-value-bind (code-cond offset-cond)
-        (compile-expr expr-cond stack-frames offset)
+        (compile-expr expr-cond stack-frames offset nil)
       (ensure-one-value offset offset-cond expr-cond "if condition")
 
       (multiple-value-bind (code-true offset-true)
-          (compile-expr expr-a stack-frames offset)
+          (compile-expr expr-a stack-frames offset tailp)
 
         (multiple-value-bind (code-false offset-false)
-            (compile-expr expr-b stack-frames offset)
+            (compile-expr expr-b stack-frames offset tailp)
           (ensure-one-value offset offset-true expr-a "if true branch")
           (ensure-one-value offset offset-false expr-b "if false branch")
           (let ((label-else (genkey "else-")) (label-end (genkey "end-")))
@@ -220,11 +288,11 @@
     (compiler-error "while must have at least two arguments" expr))
   (destructuring-bind (expr-cond . body) (cdr expr)
     (multiple-value-bind (code-cond offset-cond)
-        (compile-expr expr-cond stack-frames offset)
+        (compile-expr expr-cond stack-frames offset nil)
       (ensure-one-value offset offset-cond expr-cond "while condition")
       (let ((label-start (genkey "start-")) (label-end (genkey "end-")))
         (multiple-value-bind (code-body body-offset)
-            (compile-body body stack-frames offset)
+            (compile-body body stack-frames offset nil)
           (values (append
                    `((:label ,label-start))
                    code-cond
@@ -247,21 +315,21 @@
     (compile-binop expr ,instruction stack-frames offset)))
 
 (defmacro deflang-compile-expr (&rest rules)
-  `(defun compile-expr (expr &optional (stack-frames '()) (offset 0))
+  `(defun compile-expr (expr &optional (stack-frames '()) (offset 0) (tailp nil))
      (case (expr-type expr)
        ,@(loop for rule in rules
                collect (macroexpand rule))
        (t (compiler-error "unknown expression" expr)))))
 
 (deflang-compile-expr
-    (:number (values `((:push ,expr)) (1+ offset)))
+  (:number (values `((:push ,expr)) (1+ offset)))
 
-    (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
+  (:symbol (values `((:push ,(get-depth stack-frames expr)) (:pick)) (1+ offset)))
 
   (:print
    (unless (cdr expr)
      (compiler-error "print requires exactly one value" expr))
-   (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset)
+   (multiple-value-bind (code new-offset) (compile-expr (cadr expr) stack-frames offset nil)
      (ensure-one-value offset new-offset (cadr expr) "argument of print")
      (values (append code '((:print))) offset)))
 
@@ -270,34 +338,34 @@
                 (symbolp (cadr expr)))
      (compiler-error "set must be (set symbol expr)" expr))
    (destructuring-bind (var expr-a) (cdr expr)
-     (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset)
+     (multiple-value-bind (code-a offset-a) (compile-expr expr-a stack-frames offset nil)
        (ensure-one-value offset offset-a expr-a "argument of set")
        (values (append code-a
                        `((:push ,(get-depth stack-frames var)) (:set)))
                offset))))
 
-  (:let (compile-let expr stack-frames offset))
+  (:let (compile-let expr stack-frames offset tailp))
 
-  (:if (compile-if expr stack-frames offset))
+  (:if (compile-if expr stack-frames offset tailp))
 
   (:while (compile-while expr stack-frames offset))
 
   (:progn
     (unless (> (length (cdr expr)) 0)
       (compiler-error "body of progn must have at least one exprssion"))
-    (multiple-value-bind (code new-offset) (compile-body (cdr expr) stack-frames offset)
+    (multiple-value-bind (code new-offset) (compile-body (cdr expr) stack-frames offset tailp)
       (ensure-one-value offset new-offset expr "progn")
       (values code (1+ offset))))
 
   (:fn (values '() offset))
 
-  (:call (compile-call expr stack-frames offset))
+  (:call (compile-call expr stack-frames offset tailp))
 
   (:- (destructuring-bind (a &optional b) (cdr expr)
         (if b
             (compile-binop expr :sub stack-frames offset)
             (multiple-value-bind (code-a new-offset)
-                (compile-expr a stack-frames (1+ offset))
+                (compile-expr a stack-frames (1+ offset) nil)
               ;; TODO: consider binop and unop macros to work with instruction templates
               ;;       perpaps when this pattern show up again
               (unless (= new-offset (+ offset 2)) "RHS of - must push exactly one value" a)
