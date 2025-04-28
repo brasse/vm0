@@ -1,15 +1,6 @@
-(defpackage :vm0/examples
-  (:use :cl)
-  (:export :+factorial+
-           :+fibonacci+
-           :+sum-0-n+
-           :+max-a-b+
-           :+function-return-void+
-           :+function-return-int+))
+(in-package :vm0)
 
-(in-package :vm0/examples)
-
-(defparameter +factorial+
+(defparameter +factorial-asm+
   '((:push 1)                           ; product
     (:push 5)                           ; counter, factorial to compute
 
@@ -31,7 +22,7 @@
     (:print)
     (:halt)))
 
-(defparameter +fibonacci+
+(defparameter +fibonacci-asm+
   '((:push 0)                           ; a fib(n - 2)
     (:push 1)                           ; b fib(n - 1)
     (:push 10)                          ; n
@@ -64,7 +55,7 @@
     (:print)                            ; print b
     (:halt)))
 
-(defparameter +sum-0-n+
+(defparameter +sum-0-n-asm+
   '((:push 0)                           ; sum = 0
     (:push 5)                           ; n = 5
 
@@ -89,7 +80,7 @@
     (:print)                            ; print sum
     (:halt)))
 
-(defparameter +max-a-b+
+(defparameter +max-a-b-asm+
   '((:push 10)                          ; a
     (:push 42)                          ; b
 
@@ -107,7 +98,7 @@
     (:print)
     (:halt)))
 
-(defparameter +function-return-void+
+(defparameter +function-return-void-asm+
   '((:push 10)
     (:push 42)
     (:call :func)
@@ -123,7 +114,7 @@
     (:print)
     (:ret)))
 
-(defparameter +function-return-int+
+(defparameter +function-return-int-asm+
   '((:push 2)
     (:push 3)
     (:call :func)
