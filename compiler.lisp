@@ -120,13 +120,13 @@
           (setf current-offset offset-a))))
     (values (apply #'append (nreverse init-code)) current-offset)))
 
-(defun compile-let (expr stack-frames offset tailp)
+(defun compile-let (expr stack-frames offset)
   (destructuring-bind (bindings . body) (cdr expr)
     (push (make-frame :offset offset) stack-frames)
     (multiple-value-bind (init-code init-offset)
         (compile-let-bindings bindings stack-frames offset)
       (multiple-value-bind (body-code final-offset)
-          (compile-body body stack-frames init-offset tailp "let body" expr)
+          (compile-body body stack-frames init-offset nil "let body" expr)
         (ensure-one-value init-offset final-offset body "let body")
         (pop stack-frames)
         (values(append init-code
@@ -351,7 +351,7 @@
                        `((:push ,(get-depth stack-frames var)) (:set)))
                offset))))
 
-  (:let (compile-let expr stack-frames offset tailp))
+  (:let (compile-let expr stack-frames offset))
 
   (:if (compile-if expr stack-frames offset tailp))
 
