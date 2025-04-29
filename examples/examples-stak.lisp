@@ -49,3 +49,10 @@
            (print current)
            (counter (+ current 1) limit))))
     (print (counter 0 20))))
+
+(defparameter +does-not-break-horribly+
+  ;; tail calls are not be optimized inside let
+  ;; doing so is hard and we won't do it in this project
+  '((fn tail (x) (* x 2))
+    (fn outer (x) (let ((a (* x 2))) (tail a)))
+    (print (outer 100))))
