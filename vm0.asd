@@ -8,8 +8,9 @@
                (:file "defvm-macros")
                (:file "instructions")
                (:file "assembler")
-               (:file "compiler")
                (:file "vm")
+               (:file "ast-util")
+               (:file "compiler")
                (:file "examples/examples-asm")
                (:file "examples/examples-stak")))
 

@@ -386,30 +386,21 @@
   (binop :> :gt)
   (binop :>= :gte))
 
-(defun collect-functions (ast &optional (function-table (make-hash-table)))
-  (cond
-    ((and (listp ast) (eq (car ast) 'fn))
-     ;; found a function, store it!
-     (let ((name (cadr ast))
-           (args (caddr ast)))
-       (unless (symbolp name)
-         (compiler-error (format nil "function name must be a symbol: ~A" name)))
-       (unless (and (listp args) (every #'symbolp args))
-         (compiler-error
-          (format nil "function arguments for ~A must be a list of symbols: ~A" name args)))
-       (unless (= (length args) (length (remove-duplicates args)))
-         (compiler-error (format nil "duplicate arguments in function ~A: ~A" name args)))
-       (if (gethash name function-table)
-           (compiler-error (format nil "function name collision: ~A" name))
-           (setf (gethash name function-table)
-                 (make-function-info :name name :arity (length args) :ast ast)))))
-    ((listp ast)
-     ;; walk into subexpressions
-     (loop for expr in ast do
-       (collect-functions expr function-table)))
-    ;; atoms: ignore
-    (t nil))
-  function-table)
+(defun collect-functions-fn (function-table)
+  (lambda (ast)
+    (when (and (listp ast) (eq (car-safe ast) 'fn))
+      (let ((name (cadr ast))
+            (args (caddr ast)))
+        (unless (symbolp name)
+          (compiler-error (format nil "function name must be a symbol: ~A" name)))
+        (unless (and (listp args) (every #'symbolp args))
+          (compiler-error
+           (format nil "function arguments for ~A must be a list of symbols: ~A" name args)))
+        (unless (= (length args) (length (remove-duplicates args)))
+          (compiler-error (format nil "duplicate arguments in function ~A: ~A" name args)))
+        (setf (gethash name function-table)
+              (make-function-info :name name :arity (length args) :ast ast))))
+    ast))
 
 (defun compile-functions (function-table)
   (loop for function-info being the hash-values in function-table
@@ -418,8 +409,9 @@
   function-table)
 
 (defun compile-program (program)
-  (let ((function-table (collect-functions program)))
+  (let ((function-table (make-hash-table)))
     (declare (special function-table))
+    (walk-ast program (collect-functions-fn function-table))
     (compile-functions function-table)
     (append
      (loop for expr in program
