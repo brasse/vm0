@@ -61,8 +61,8 @@
 (defun function-label (name)
   (intern (format nil "fn-~A" name) :keyword))
 
-(defun clean-up-stack (n)
-  (make-list n :initial-element '(:pop)))
+(defun repeat-instructions (n instructions)
+  (loop repeat n append instructions))
 
 (defun to-keyword (symbol)
   (cond
@@ -96,9 +96,10 @@
       (multiple-value-bind (code new-offset)
           (compile-expr expr stack-frames offset)
         (push code body-code)
-        (push (clean-up-stack (- new-offset offset)) body-code)))
+        (push (repeat-instructions (- new-offset offset) '((:pop))) body-code)))
     (multiple-value-bind (final-code final-offset)
         (compile-expr (car (last body)) stack-frames offset tailp)
+      (ensure-one-value offset final-offset (car (last body)) "last expr in body")
       (push final-code body-code)
       (values (apply #'append (nreverse body-code)) final-offset))))
 
@@ -126,25 +127,31 @@
         (compile-let-bindings bindings stack-frames offset)
       (multiple-value-bind (body-code final-offset)
           (compile-body body stack-frames init-offset tailp "let body" expr)
+        (ensure-one-value init-offset final-offset body "let body")
         (pop stack-frames)
         (values(append init-code
                        body-code
-                       (clean-up-stack (- final-offset offset)))
-               offset)))))
+                       ;; pop all locals
+                       (repeat-instructions
+                        (- init-offset offset) '((:push 1) (:roll) (:pop))))
+               (1+ offset))))))
 
 (defun compile-fn (expr)
   (destructuring-bind (name args . body) (cdr expr)
-    (let ((n-args (length args)))
+    (let ((n-args (length args))
+          (offset 2)) ;; offset is 2 here because fp and pc is on the stack above current fp
       (multiple-value-bind (code new-offset)
-          (compile-body body (list (make-frame :start-var-index (- (1+ n-args)) :vars args)) 0 t
+          (compile-body body (list (make-frame :start-var-index (- (1+ n-args)) :vars args)) offset t
                         (format nil "function body of ~A" name) expr)
-        (ensure-one-value 0 new-offset body "function body")
+        (ensure-one-value offset new-offset body "function body")
         (values (append
                  `((:label ,(function-label name)))
                  code
-                 ;; bring up sp and fp
-                 (loop repeat 2 append '((:push 2) (:roll)))
-                 '((:ret))))))))
+                 ;; stack: [ x arg n-args fp pc ret-v ]
+                 ;; bring up fp and pc to be able to :ret
+                 '((:push 2) (:roll)
+                   (:push 2) (:roll)
+                   (:ret))))))))
 
 (defun compile-arg-list (arg-list stack-frames offset)
   (let ((arg-offset offset))
@@ -298,7 +305,7 @@
                    code-cond
                    `((:jz ,label-end))
                    code-body
-                   (clean-up-stack (- body-offset offset))
+                   (repeat-instructions (- body-offset offset) '((:pop)))
                    `((:jmp ,label-start) (:label ,label-end)))
                   offset))))))
 
