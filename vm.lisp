@@ -17,7 +17,7 @@
             (otherwise (error "unknown control directive: ~S" (car control-directive))))
           (setf sp new-sp)
           (setf fp new-fp)
-          (when trace (format t "~S ~S~%" instruction (subseq stack 0 sp))))))))
+          (when trace (format t "~A ~A ~A~%" instruction fp (subseq stack 0 sp))))))))
 
 (defun assemble-and-run (&key program trace)
   (run-program (assemble (macro (syntax program)))
