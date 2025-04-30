@@ -395,7 +395,7 @@
 
 (defun collect-functions-fn (function-table)
   (lambda (ast)
-    (when (and (listp ast) (eq (car-safe ast) 'fn))
+    (when (and (listp ast) (eq (car ast) 'fn))
       (let ((name (cadr ast))
             (args (caddr ast)))
         (unless (symbolp name)
@@ -409,6 +409,27 @@
               (make-function-info :name name :arity (length args) :ast ast))))
     ast))
 
+(defun and-transform (exprs)
+  (cond
+    ((= (length exprs) 1) (car exprs))
+    ((= (length exprs) 2) `(if ,(car exprs) ,(cadr exprs) 0))
+    (t `(if ,(car exprs) ,(and-transform (cdr exprs)) 0))))
+
+(defun or-transform (exprs)
+  (cond
+    ((= (length exprs) 1) (car exprs))
+    ((= (length exprs) 2) `(if ,(car exprs) ,(car exprs) ,(cadr exprs)))
+    (t `(if ,(car exprs) ,(car exprs) ,(or-transform (cdr exprs))))))
+
+;; tiny AST transform just to use the concept
+(defun ast-transform (ast)
+  (if (listp ast)
+      (case (car ast)
+        (and (and-transform (cdr ast)))
+        (or (or-transform (cdr ast)))
+        (t ast))
+      ast))
+
 (defun compile-functions (function-table)
   (loop for function-info being the hash-values in function-table
         do (setf (function-info-code function-info)
@@ -418,13 +439,14 @@
 (defun compile-program (program)
   (let ((function-table (make-hash-table)))
     (declare (special function-table))
-    (walk-ast program (collect-functions-fn function-table))
-    (compile-functions function-table)
-    (append
-     (loop for expr in program
-           append (multiple-value-bind (code offset) (compile-expr expr '())
-                    (assert (zerop offset) () "expression in program must clean up stack")
-                    code))
-     '((:halt))
-     (loop for function-info being the hash-values in function-table
-           append (function-info-code function-info)))))
+    (let ((core-program (walk-program program #'ast-transform)))
+      (walk-program core-program (collect-functions-fn function-table))
+      (compile-functions function-table)
+      (append
+       (loop for expr in program
+             append (multiple-value-bind (code offset) (compile-expr expr '())
+                      (assert (zerop offset) () "expression in program must clean up stack")
+                      code))
+       '((:halt))
+       (loop for function-info being the hash-values in function-table
+             append (function-info-code function-info))))))
