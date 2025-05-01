@@ -23,6 +23,13 @@
     (fn fib (n) (fib-0 n 0 1))
     (print (fib 500))))
 
+(defparameter +gcd+
+  '((fn gcd (a b)
+     (if (= b 0)
+         a
+         (gcd b (% a b))))
+    (print (gcd 48 18))))
+
 (defparameter +even-odd-stak-tr+
   '((fn even (n)
      (if (= n 0)
