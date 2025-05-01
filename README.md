@@ -55,3 +55,8 @@ Stak. And it compiles to this beatiful mess:
 There's tail call optimization in there and it works! Look at the
 `(:JMP :|fn-GCD|)` instruction. That's the tail call to `gcd`. Pretty
 cool!
+
+## License
+
+This project is licensed under the MIT License. See the
+[LICENSE](./LICENSE) file for details.
