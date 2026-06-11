@@ -450,3 +450,7 @@
        '((:halt))
        (loop for function-info being the hash-values in function-table
              append (function-info-code function-info))))))
+
+(defun compile-and-run (program &key trace)
+  (run-program (assemble (macro (compile-program program)))
+               :trace trace))
