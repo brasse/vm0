@@ -23,7 +23,8 @@ arithmetic, comparisons, `not`, and short-circuiting `and`/`or`
 (lowered by a little AST-rewriting pass before compilation). You write
 in Stak like a normal language. Under the hood, it carefully rewrites
 and lowers your code onto the VM's humble instruction set, wiring it
-all together with a DIY calling convention made of duct tape and
+all together with a [DIY calling
+convention](./docs/calling-convention.md) made of duct tape and
 determination.
 
 It’s simple, self-contained, and fun! Like a tiny CPU emulator that
