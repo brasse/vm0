@@ -5,19 +5,26 @@ language from scratch.
 
 **vm0** is a tiny stack-based virtual machine with big dreams. And it
 actually pulled them off. It runs code. It prints numbers. It handles
-recursion. It even does tail calls (most of the time).
+recursion. It even does tail calls (some of the time).
 
 At its core, vm0 is a minimal stack machine: no heap, no types, no
-objects. Just a disciplined stack and a Lisp-powered brain. The
-instruction set is tiny, but the assembler supports macros to make raw
-stack programs slightly less painful to write (and read).
+objects. Just a disciplined stack, with the whole thing (machine,
+assembler and compiler) written in Common Lisp. The [instruction
+set](./instructions.lisp) is tiny yet capable, and the semantics of
+each instruction are written in a little Lisp DSL, so the whole thing
+fits on one screen. And when something goes wrong, like a stack
+underflow, a division by zero, or a bogus instruction, it traps
+cleanly instead of taking the whole process down with it.
 
 Built on top is Stak, a small Lisp-like language that compiles down to
-vm0. It supports `let`, `set`, `if`, `while`, function definitions
-and proper tail call optimization. You write in Stak like a normal
-language. Under the hood, it carefully rewrites and lowers your code
-into stack instructions using pick, roll, and a DIY calling convention
-made of duct tape and determination.
+vm0. It supports `let`, `set`, `if`, `while`, `progn`, function
+definitions and proper tail call optimization, plus the usual
+arithmetic, comparisons, `not`, and short-circuiting `and`/`or`
+(lowered by a little AST-rewriting pass before compilation). You write
+in Stak like a normal language. Under the hood, it carefully rewrites
+and lowers your code onto the VM's humble instruction set, wiring it
+all together with a DIY calling convention made of duct tape and
+determination.
 
 It’s simple, self-contained, and fun! Like a tiny CPU emulator that
 learned just enough Lisp to build a real language.
@@ -55,6 +62,44 @@ Stak. And it compiles to this beatiful mess:
 There's tail call optimization in there and it works! Look at the
 `(:JMP :|fn-GCD|)` instruction. That's the tail call to `gcd`. Pretty
 cool!
+
+## Running it
+
+vm0 is Common Lisp, built with ASDF. You'll need a Lisp to run it
+(SBCL via [Roswell](https://github.com/roswell/roswell) works nicely):
+
+```lisp
+;; load it
+(asdf:load-system :vm0)
+(in-package :vm0)
+
+;; run raw stack assembly
+(assemble-and-run :program +factorial-asm+)   ; => 120
+
+;; run Stak: compile -> expand macros -> assemble -> run, in one call
+(compile-and-run +gcd+)                        ; => 6
+```
+
+Both helpers take a `:trace t` keyword if you want to watch the stack
+evolve instruction by instruction.
+
+To run the tests (needs `fiveam` and `split-sequence`, both on
+Quicklisp):
+
+```lisp
+(asdf:load-system :vm0/tests)
+(fiveam:run-all-tests)
+```
+
+## More examples
+
+Poke around the `examples/` directory for more:
+
+- [`examples/examples-stak.lisp`](./examples/examples-stak.lisp): Stak
+  programs. Factorial (of *1000*, thanks to bignums and tail calls),
+  Fibonacci, `gcd`, mutually-recursive even/odd, and a counting loop.
+- [`examples/examples-asm.lisp`](./examples/examples-asm.lisp):
+  hand-written stack assembly for the brave.
 
 ## License
 
