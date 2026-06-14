@@ -17,11 +17,19 @@
               `(if (>= sp (length stack))
                    (trap :stack-overflow)
                    (progn (setf (aref stack sp) ,val) (incf sp))))
-            (safe-read (depth &key (mode :bottom-up))
-              `(%validate-index ,depth ,mode
+            ;; frame-* address slots relative to fp (arguments and
+            ;; locals); stack-* address slots relative to the top (sp).
+            (frame-read (depth)
+              `(%validate-index ,depth :bottom-up
                                 (aref stack stack-pos)))
-            (safe-write (depth value &key (mode :bottom-up))
-              `(%validate-index ,depth ,mode
+            (frame-write (depth value)
+              `(%validate-index ,depth :bottom-up
+                                (setf (aref stack stack-pos) ,value)))
+            (stack-read (depth)
+              `(%validate-index ,depth :top-down
+                                (aref stack stack-pos)))
+            (stack-write (depth value)
+              `(%validate-index ,depth :top-down
                                 (setf (aref stack stack-pos) ,value)))
             (shift-down (depth)
               `(%validate-index ,depth :top-down
