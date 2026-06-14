@@ -113,3 +113,12 @@
   (is (equalp
        '("42")
        (capture-output (lambda () (run-program #((:push 42) (:print))))))))
+
+;; Reading at a depth at or above the live top (sp) must trap, not
+;; silently return a stale or zero-initialized slot. Here the stack
+;; holds one live value but :pick asks for index 5, well above sp.
+(test pick-above-sp-traps
+  (is (equalp
+       '("trap: (:STACK-OUT-OF-BOUNDS)")
+       (capture-output
+        (lambda () (run-program #((:push 99) (:push 5) (:pick))))))))

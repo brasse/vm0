@@ -6,7 +6,7 @@
        (macrolet
            ((%validate-index (index mode &body body)
               `(let ((stack-pos (if (eq ,mode :bottom-up) (+ fp ,index) (- sp 1 ,index))))
-                 (if (or (< stack-pos 0) (>= stack-pos (length stack)))
+                 (if (or (< stack-pos 0) (>= stack-pos sp))
                      (trap :stack-out-of-bounds)
                      ,@body)))
             (safe-pop ()
