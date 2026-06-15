@@ -375,7 +375,7 @@
                 (compile-expr a stack-frames (1+ offset) nil)
               ;; TODO: consider binop and unop macros to work with instruction templates
               ;;       perpaps when this pattern show up again
-              (unless (= new-offset (+ offset 2)) "RHS of - must push exactly one value" a)
+              (ensure-one-value (1+ offset) new-offset a "operand of -")
               (values (append '((:push 0))
                               code-a
                               '((:sub)))

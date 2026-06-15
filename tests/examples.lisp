@@ -28,3 +28,11 @@
   (is (equalp
        '("105")
        (capture-output (lambda () (assemble-and-run :program vm0::+function-return-int-asm+))))))
+
+;; Unary minus lowers to (0 - a), compiling its operand one slot above
+;; the pushed 0. Guards against the off-by-one in its one-value check.
+(test unary-minus-compiles
+  (is (equalp
+       '("-5" "-3")
+       (capture-output
+        (lambda () (compile-and-run '((print (- 5)) (print (- (+ 1 2))))))))))
