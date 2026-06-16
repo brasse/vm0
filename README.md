@@ -32,7 +32,7 @@ learned just enough Lisp to build a real language.
 
 # Stak
 
-This is real Stak code:
+This is a Stak program:
 
 ```lisp
 (fn gcd (a b)
@@ -42,8 +42,10 @@ This is real Stak code:
 (print (gcd 48 18))
 ```
 
-If you squint this might look like Lisp or Scheme, but it isn't. It's
-Stak. And it compiles to this beatiful mess:
+It looks like Lisp, and that's no coincidence: Stak programs are
+s-expressions, so the Lisp reader does the parsing and the compiler
+just walks the lists. The syntax is borrowed; the meaning is Stak's
+own. And it compiles to this beautiful mess:
 
 ```
 (:PUSH 48) (:PUSH 18) (:PUSH 2) (:CALL :|fn-GCD|) (:PUSH 1) (:ROLL)
