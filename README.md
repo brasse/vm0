@@ -10,9 +10,9 @@ recursion. It even does tail calls (some of the time).
 At its core, vm0 is a minimal stack machine: no heap, no types, no
 objects. Just a disciplined stack, with the whole thing (machine,
 assembler and compiler) written in Common Lisp. The [instruction
-set](./instructions.lisp) is tiny yet capable, and the semantics of
-each instruction are written in a little Lisp DSL, so the whole thing
-fits on one screen. And when something goes wrong, like a stack
+set](./docs/instruction-set.md) is tiny yet capable, and the semantics
+of each instruction are written in a little [Lisp
+DSL](./instructions.lisp), so the whole thing fits on one screen. And when something goes wrong, like a stack
 underflow, a division by zero, or a bogus instruction, it traps
 cleanly instead of taking the whole process down with it.
 
